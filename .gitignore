@@ -1,0 +1,20 @@
+# 依赖
+node_modules/
+
+# 构建产物
+# 页面：pnpm build:renderer 生成，打包时嵌进 exe
+pluginhub/dist/
+# 桌面外壳：cargo / tauri build 的输出，安装包也在里面
+pluginhub/src-tauri/target/
+# tauri-build 每次构建都会重新生成
+pluginhub/src-tauri/gen/schemas/
+# build-app.ps1 复制出来的安装包
+pluginhub/out/
+
+# 生成 README 插图的脚本，只留在本机，不进 git
+assets/figures.py
+
+# 给 AI 助手的工作笔记和 Claude Code 的本地配置，只留在本机，不进 git
+AGENTS.md
+CLAUDE.md
+.claude/

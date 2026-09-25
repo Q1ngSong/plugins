@@ -1,0 +1,38 @@
+[package]
+name = "pluginhub"
+version = "1.2.0"
+description = "插件中心：统一管理 Claude Code 和 Codex 的插件"
+edition = "2021"
+rust-version = "1.85.0"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+regex = "1"
+toml = "0.9"
+fs2 = "0.4"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+    "Win32_System_Console",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Globalization",
+] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"

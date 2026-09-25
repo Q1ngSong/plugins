@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="366" viewBox="0 0 840 366" role="img" aria-labelledby="title desc">
+<title id="title">插件文件夹里有修改时</title>
+<desc id="desc">发现 ~/.yuwanplugins 里有没提交的改动或本地提交，同步就停止拉取，并给出两个选择：锁定，保留修改；或者另存一份再还原成仓库里的版本。</desc>
+<style>svg{--ambox:#fef6e8;--amink:#78350f;--amln:#fcdca8;--bg:#faf8f5;--blue:#3b82f6;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--panel:#ffffff;--white:#ffffff}@media (prefers-color-scheme:dark){svg{--ambox:#2b2415;--amink:#fde68a;--amln:#5c4516;--bg:#18181a;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--panel:#232326}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-ambox{fill:var(--ambox)}.f-amink{fill:var(--amink)}.f-bg{fill:var(--bg)}.f-blue{fill:var(--blue)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-panel{fill:var(--panel)}.f-white{fill:var(--white)}.s-amln{stroke:var(--amln)}.s-edge{stroke:var(--edge)}.s-ink{stroke:var(--ink)}.s-ink2{stroke:var(--ink2)}.s-ink3{stroke:var(--ink3)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}.s-white{stroke:var(--white)}</style>
+<rect x="0.5" y="0.5" width="839" height="365" rx="16" class="f-bg s-edge"/>
+<rect x="24" y="24" width="792" height="126" rx="12" class="f-ambox s-amln"/>
+<text x="42" y="51" class="f-amink b" style="font-size:13px">插件文件夹里有修改：2 个文件有改动、1 个本地提交</text>
+<text x="42" y="76" class="f-amink" style="font-size:12.5px">不建议在 ~/.yuwanplugins 里改插件，所以同步暂停了拉取。要保留这些修改，就锁定这个插件（不再同步）；</text>
+<text x="42" y="96" class="f-amink" style="font-size:12.5px">不需要的话，另存一份再还原成仓库里的版本。</text>
+<rect x="42" y="110" width="136" height="30" rx="7" class="f-blue"/>
+<g transform="translate(54 117) scale(0.62)"><path class="ic s-white" d="M7 11h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 17 20H7a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 7 11zM8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g>
+<text x="75" y="130" class="f-white b" style="font-size:12.5px">锁定，保留修改</text>
+<rect x="188" y="110" width="118" height="30" rx="7" class="f-panel s-line2"/>
+<g transform="translate(200 117) scale(0.62)"><path class="ic s-ink2" d="M5.5 4h10.5l3.5 3.5V19a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 4v4.5h7V4M8 20v-6h8v6"/></g>
+<text x="221" y="130" class="f-ink2" style="font-size:12.5px">另存并还原</text>
+<line x1="110" y1="143" x2="110" y2="182" class="s-ink3" stroke-width="1.5"/><path d="M110 188L106.5 181L113.5 181Z" class="f-ink3"/>
+<path d="M247 143L247 166L626 166L626 182" class="nf s-ink3" stroke-width="1.5" stroke-linejoin="round"/><path d="M626 188L622.5 181L629.5 181Z" class="f-ink3"/>
+<rect x="24" y="190" width="380" height="152" rx="12" class="f-panel s-line"/>
+<g transform="translate(40 204) scale(0.71)"><path class="ic s-ink" d="M7 11h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 17 20H7a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 7 11zM8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g>
+<text x="64" y="218" class="b" style="font-size:13.5px">锁定，保留修改</text>
+<circle cx="45" cy="245.5" r="2.2" class="f-ink3"/><text x="56" y="250" class="f-ink2" style="font-size:12.5px">不再检查新版本，也不拉取</text>
+<circle cx="45" cy="269.5" r="2.2" class="f-ink3"/><text x="56" y="274" class="f-ink2" style="font-size:12.5px">同步按钮变灰，点不了</text>
+<circle cx="45" cy="293.5" r="2.2" class="f-ink3"/><text x="56" y="298" class="f-ink2" style="font-size:12.5px">链接或配置被别的程序改坏了，后台检查照样修</text>
+<circle cx="45" cy="317.5" r="2.2" class="f-ink3"/><text x="56" y="322" class="f-ink2" style="font-size:12.5px">想恢复同步，再点一下右上角的锁</text>
+<rect x="436" y="190" width="380" height="152" rx="12" class="f-panel s-line"/>
+<g transform="translate(452 204) scale(0.71)"><path class="ic s-ink" d="M5.5 4h10.5l3.5 3.5V19a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 4v4.5h7V4M8 20v-6h8v6"/></g>
+<text x="476" y="218" class="b" style="font-size:13.5px">另存并还原</text>
+<circle cx="457" cy="245.5" r="2.2" class="f-ink3"/><text x="468" y="250" class="f-ink2" style="font-size:12.5px">整个文件夹连同 .git 复制进 ~/.pluginhub/saved</text>
+<circle cx="457" cy="269.5" r="2.2" class="f-ink3"/><text x="468" y="274" class="f-ink2" style="font-size:12.5px">本地提交也在里面，一个不丢</text>
+<circle cx="457" cy="293.5" r="2.2" class="f-ink3"/><text x="468" y="298" class="f-ink2" style="font-size:12.5px">插件文件夹还原成仓库里的版本</text>
+<circle cx="457" cy="317.5" r="2.2" class="f-ink3"/><text x="468" y="322" class="f-ink2" style="font-size:12.5px">之后照常跟着分支更新</text>
+</svg>

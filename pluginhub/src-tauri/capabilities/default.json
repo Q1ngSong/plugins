@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "页面只调用程序自己的 api 命令，另外用到窗口的基础能力",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

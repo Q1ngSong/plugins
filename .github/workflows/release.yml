@@ -1,0 +1,70 @@
+# 打 tag（v1.2.0 这样）就构建 Windows 安装包，并建一个草稿 Release 把安装包挂上去。
+# 检查过草稿没问题，再在 GitHub 页面上点 Publish。手动触发（workflow_dispatch）只构建、不发布。
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: pluginhub
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pluginhub/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: pluginhub/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # beforeBuildCommand 会先构建页面（pnpm build:renderer），再打 NSIS 安装包
+      - run: pnpm tauri build --bundles nsis
+
+      # 安装包的文件名里有中文，GitHub 会把它改掉，换成英文名再上传
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $setup.FullName "out/PluginHub_${version}_x64-setup.exe"
+          Get-ChildItem out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PluginHub-windows
+          path: pluginhub/out/*.exe
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: 插件中心 ${{ github.ref_name }}
+          files: pluginhub/out/*.exe
+          body: |
+            Windows 安装包：下载 `PluginHub_*_x64-setup.exe` 运行即可（安装到当前用户，不需要管理员权限）。
+            需要本机装有 git；Windows 10/11 自带的 WebView2 缺失时安装程序会自动补装。
+            安装包没有代码签名，SmartScreen 提示时点「更多信息 → 仍要运行」。

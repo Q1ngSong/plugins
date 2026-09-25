@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="424" viewBox="0 0 840 424" role="img" aria-labelledby="title desc">
+<title id="title">真实检查：问 app 本人</title>
+<desc id="desc">Claude Code 这边跑 claude plugin list 和 plugin details，逐个核对 skill；Codex 这边跑 codex plugin list，再渲染真正交给模型的提示，确认每个 skill 都在、文件都在 ~/.yuwanplugins 里。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--cc:#c2552f;--cx:#0b8a6a;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--oktag:#d1fae5;--oktx:#047857;--panel:#ffffff;--sunk:#f4f4f5;--term:#1f1f1f;--termdim:#8b8b8b;--termhi:#ffffff}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--cc:#f0936c;--cx:#4fd1a8;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--oktag:#0f2e24;--oktx:#6ee7b7;--panel:#232326;--sunk:#2d2d31;--term:#141414}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-cc{fill:var(--cc)}.f-cx{fill:var(--cx)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-oktag{fill:var(--oktag)}.f-oktx{fill:var(--oktx)}.f-panel{fill:var(--panel)}.f-sunk{fill:var(--sunk)}.f-term{fill:var(--term)}.f-termdim{fill:var(--termdim)}.f-termhi{fill:var(--termhi)}.s-edge{stroke:var(--edge)}.s-line{stroke:var(--line)}.s-oktx{stroke:var(--oktx)}</style>
+<defs><clipPath id="c1"><rect x="24" y="24" width="388" height="380" rx="12"/></clipPath><clipPath id="c2"><rect x="428" y="24" width="388" height="380" rx="12"/></clipPath></defs>
+<rect x="0.5" y="0.5" width="839" height="423" rx="16" class="f-bg s-edge"/>
+<rect x="24" y="24" width="388" height="380" rx="12" class="f-panel s-line"/><rect x="24" y="24" width="388" height="3" class="f-cc" clip-path="url(#c1)"/>
+<text x="40" y="54" class="f-cc b" style="font-size:14px">Claude Code</text>
+<text x="396" y="54" class="f-ink3" style="font-size:12px" text-anchor="end">问 Claude Code 本人</text>
+<rect x="40" y="204" width="356" height="88" rx="6" class="f-sunk"/>
+<rect x="428" y="24" width="388" height="380" rx="12" class="f-panel s-line"/><rect x="428" y="24" width="388" height="3" class="f-cx" clip-path="url(#c2)"/>
+<text x="444" y="54" class="f-cx b" style="font-size:14px">Codex</text>
+<text x="800" y="54" class="f-ink3" style="font-size:12px" text-anchor="end">问 Codex 本人</text>
+<rect x="444" y="204" width="356" height="88" rx="6" class="f-sunk"/>
+<rect x="40" y="70" width="356" height="30" rx="6" class="f-term"/><text x="52" y="90" style="font-size:12px"><tspan class="f-termdim m">&gt; </tspan><tspan class="f-termhi m">claude plugin list --json</tspan></text>
+<g transform="translate(40 112.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="60" y="124" style="font-size:12px"><tspan class="f-ink2">列表里有 </tspan><tspan class="m">design-code-like-a-human@skills-dir</tspan></text>
+<g transform="translate(40 134.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="60" y="146" style="font-size:12px"><tspan class="f-ink2">已启用，加载的是链接到 </tspan><tspan class="m">~/.yuwanplugins</tspan><tspan class="f-ink2"> 的那份</tspan></text>
+<rect x="40" y="164" width="356" height="30" rx="6" class="f-term"/><text x="52" y="184" style="font-size:12px"><tspan class="f-termdim m">&gt; </tspan><tspan class="f-termhi m">claude plugin details &lt;插件 ID&gt;</tspan></text>
+<text x="52" y="224" class="m b" style="font-size:11px">Skills (13)</text>
+<text x="136" y="224" class="f-ink2 m" style="font-size:11px">auditing-code-comments,</text>
+<text x="136" y="242" class="f-ink2 m" style="font-size:11px">comparing-methods-fairly, dclh,</text>
+<text x="136" y="260" class="f-ink2 m" style="font-size:11px">designing-project-layout,</text>
+<text x="136" y="278" class="f-ink2 m" style="font-size:11px">evaluating-frozen-methods, …</text>
+<g transform="translate(40 302.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="60" y="314" style="font-size:12px"><tspan class="f-ink2">13 个 skill 一个不少</tspan></text>
+<rect x="40" y="348" width="356" height="38" rx="8" class="f-oktag"/>
+<g transform="translate(52 358) scale(0.75)"><path class="ic s-oktx" d="M12 3l7.5 3v5.5c0 4.7-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.8-7.5-9.5V6zM8.5 12l2.5 2.5 4.5-5"/></g>
+<text x="78" y="372" class="f-oktx b" style="font-size:12.5px">通过：plugin details 认出 13 个 skill</text>
+<rect x="444" y="70" width="356" height="30" rx="6" class="f-term"/><text x="456" y="90" style="font-size:12px"><tspan class="f-termdim m">&gt; </tspan><tspan class="f-termhi m">codex plugin list --json</tspan></text>
+<g transform="translate(444 112.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="464" y="124" style="font-size:12px"><tspan class="f-ink2">列表里有 </tspan><tspan class="m">design-code-like-a-human@personal</tspan></text>
+<g transform="translate(444 134.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="464" y="146" style="font-size:12px"><tspan class="f-ink2">已安装，已启用</tspan></text>
+<rect x="444" y="164" width="356" height="30" rx="6" class="f-term"/><text x="456" y="184" style="font-size:12px"><tspan class="f-termdim m">&gt; </tspan><tspan class="f-termhi m">codex debug prompt-input "hi"</tspan></text>
+<text x="456" y="224" class="m" style="font-size:10.5px" xml:space="preserve">- design-code-like-a-human:auditing-code-comments:</text>
+<text x="456" y="242" class="f-ink2 m" style="font-size:10.5px" xml:space="preserve">  (file: ~/.yuwanplugins/design-code-like-a-human/</text>
+<text x="456" y="260" class="f-ink2 m" style="font-size:10.5px" xml:space="preserve">   skills/auditing-code-comments/SKILL.md)</text>
+<text x="456" y="278" class="f-ink3 m" style="font-size:10.5px" xml:space="preserve">- design-code-like-a-human:comparing-methods-fai…</text>
+<g transform="translate(444 302.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="464" y="314" style="font-size:12px"><tspan class="f-ink2">13 个 skill 都在模型提示里</tspan></text>
+<g transform="translate(444 322.5) scale(0.58)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g><text x="464" y="334" style="font-size:12px"><tspan class="f-ink2">路径都在 </tspan><tspan class="m">~/.yuwanplugins</tspan><tspan class="f-ink2">，不是缓存里的旧副本</tspan></text>
+<rect x="444" y="348" width="356" height="38" rx="8" class="f-oktag"/>
+<g transform="translate(456 358) scale(0.75)"><path class="ic s-oktx" d="M12 3l7.5 3v5.5c0 4.7-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.8-7.5-9.5V6zM8.5 12l2.5 2.5 4.5-5"/></g>
+<text x="482" y="372" class="f-oktx b" style="font-size:12.5px">通过：模型提示里能看到 13 个 skill</text>
+</svg>

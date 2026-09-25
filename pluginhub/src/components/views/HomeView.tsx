@@ -1,0 +1,124 @@
+import { AlertTriangle, Lock, Plus, Puzzle, ShieldCheck, Wrench } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AppChip, Spinner, Tag } from "@/components/common/bits";
+import { PluginActions } from "@/components/common/PluginActions";
+import { api, APP_NAME, AppKey, installedApps, Plugin, State, troubledApps, when } from "@/lib/api";
+import type { Run } from "@/lib/useRun";
+import type { ConfirmFn } from "@/App";
+import { cn } from "@/lib/utils";
+
+export type Filter = "all" | AppKey;
+
+function iconTone(p: Plugin) {
+  if (p.managed) return "border-blue-100 bg-blue-50 text-blue-500 dark:border-blue-500/20 dark:bg-blue-500/10";
+  if (p.official) return "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-300";
+  return "border-violet-100 bg-violet-50 text-violet-500 dark:border-violet-500/20 dark:bg-violet-500/10";
+}
+
+function Notices({ state, busy, run }: { state: State; busy: string | null; run: Run }) {
+  const notes: string[] = [];
+  if (!state.tools.claude) notes.push("没找到 Claude Code 的命令行 claude.exe，Claude Code 这边无法安装和更新。");
+  if (!state.tools.codex) notes.push("没找到 Codex 的命令行 codex.exe，Codex 这边无法安装和更新。");
+  if (!state.tools.git) notes.push("没找到 git，无法拉取插件。");
+  const auto = state.hub.auto;
+  if ((auto.enabled || state.hub.guard.enabled) && !auto.installed) notes.push("后台检查或自动更新是开着的，但后台任务没在运行。到设置里把它关掉再打开一次。");
+  // 后台检查最近一天修过的配置
+  const day = Date.now() - 86400_000;
+  const repairs = state.plugins.flatMap((p) => p.apps.filter((a) => a.repair && new Date(a.repair.at).getTime() > day)
+    .map((a) => ({ p, a, at: a.repair!.at })));
+  const hasOurs = state.plugins.some((p) => p.managed || p.apps.some((a) => a.port));
+  return <>
+    {notes.map((n) => (
+      <div key={n} className="flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-[13px] text-amber-900 dark:text-amber-200">
+        <AlertTriangle className="h-4 w-4 flex-none" /><span>{n}</span>
+      </div>
+    ))}
+    {!state.hub.guard.enabled && hasOurs && (
+      <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-blue-500/25 bg-blue-500/[.07] px-3.5 py-2 text-[13px] text-blue-900 dark:text-blue-200">
+        <ShieldCheck className="h-4 w-4 flex-none" />
+        <span className="min-w-0 flex-1">后台检查没开：别的程序（比如切换服务商的工具）改掉插件配置时，不会自动发现和修复。</span>
+        <Button size="sm" disabled={!!busy} onClick={() => run("guard", () => api.guard(true), "已开启后台检查")}>
+          {busy === "guard" && <Spinner />}打开后台检查
+        </Button>
+      </div>
+    )}
+    {repairs.length > 0 && (
+      <div className="flex items-center gap-2.5 rounded-lg border border-sky-500/25 bg-sky-500/10 px-3.5 py-2 text-[13px] text-sky-900 dark:text-sky-200">
+        <Wrench className="h-4 w-4 flex-none" />
+        <span>后台检查最近一天修复了 {repairs.length} 处被改掉的插件配置（{repairs.map((x) => `${x.p.name} · ${APP_NAME[x.a.app]}`).join("、")}），最近一次在 {when(repairs.map((x) => x.at).sort().pop())}。</span>
+      </div>
+    )}
+  </>;
+}
+
+export function HomeView({ state, filter, busy, run, confirm, onOpen, onAdd, onInstall }: {
+  state: State; filter: Filter; busy: string | null; run: Run; confirm: ConfirmFn; onOpen: (key: string) => void; onAdd: () => void; onInstall: (key: string) => void;
+}) {
+  const list = state.plugins.filter((p) => filter === "all" || p.apps.some((a) => a.app === filter && a.installed));
+  const pending = state.plugins.filter((p) => p.managed?.needs_update).length;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Notices state={state} busy={busy} run={run} />
+      {pending > 0 && (
+        <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-[13px] text-amber-900 dark:text-amber-200">
+          <span>{pending} 个插件有新版本</span><span className="flex-1" />
+          <Button size="sm" disabled={!!busy} onClick={() => run("update-all", api.updateAll, "都已更新")}>
+            {busy === "update-all" && <Spinner />}全部更新
+          </Button>
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <div className="rounded-xl border-[1.5px] border-dashed p-10 text-center">
+          <div className="mx-auto mb-2.5 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground"><Puzzle className="h-6 w-6" /></div>
+          <div className="text-base font-semibold">{filter === "all" ? "本机还没有插件" : `${APP_NAME[filter]} 里还没有插件`}</div>
+          <div className="mt-1 text-sm text-muted-foreground">点右上角橙色 + 添加一个插件仓库</div>
+          <Button className="mt-4" onClick={onAdd}><Plus className="h-4 w-4" />添加插件</Button>
+        </div>
+      ) : (
+        // 瀑布流：卡片窄一些、一行放几张，高度跟着介绍长短走
+        <div className="columns-[200px] gap-3">
+          {list.map((p) => {
+            const version = p.version || p.apps[0]?.version || "";
+            const disabled = p.apps.some((a) => a.installed && a.enabled === false);
+            const locked = !!p.managed?.locked, modified = !!p.managed?.modified.length;
+            const troubled = troubledApps(p).length > 0;
+            return (
+              <div key={p.key} role="link" tabIndex={0} onClick={() => onOpen(p.key)}
+                onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(p.key); } }}
+                className={cn("group relative mb-3 flex cursor-pointer break-inside-avoid flex-col gap-2.5 overflow-hidden rounded-2xl border bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-blue-500/50 hover:shadow-md focus-visible:border-blue-500",
+                  p.managed && "before:pointer-events-none before:absolute before:inset-0 before:bg-gradient-to-b before:from-blue-500/[.07] before:to-transparent before:to-50%")}>
+                <div className="relative flex items-start justify-between gap-2">
+                  <div className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-xl border transition-transform group-hover:scale-105", iconTone(p))}>
+                    <Puzzle className="h-4 w-4" />
+                  </div>
+                  <PluginActions p={p} busy={busy} run={run} confirm={confirm} onInstall={() => onInstall(p.key)} />
+                </div>
+                <div className="relative">
+                  <div className="break-all text-[15px] font-semibold leading-snug">{p.name}</div>
+                  {(version || p.managed?.needs_update || p.managed?.error || disabled || locked || modified || troubled) && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {version && <Tag tone="slate" mono>{version}</Tag>}
+                      {locked && <Tag tone="slate"><Lock className="h-3 w-3" />已锁定</Tag>}
+                      {modified && <Tag tone="amber">有本地修改</Tag>}
+                      {p.managed?.needs_update && !p.managed.error && !troubled && <Tag tone="amber">有新版本</Tag>}
+                      {troubled && <Tag tone="red">要检查</Tag>}
+                      {p.managed?.error && !modified && <Tag tone="red">出错</Tag>}
+                      {disabled && <Tag tone="red">已停用</Tag>}
+                    </div>
+                  )}
+                </div>
+                <p className="relative line-clamp-[8] text-xs leading-relaxed text-muted-foreground" title={p.description}>{p.description || "插件里没有写介绍"}</p>
+                <div className="relative flex flex-wrap gap-1.5">
+                  {installedApps(p).map((a) => <AppChip key={a.app + a.id} app={a.app} />)}
+                  {!installedApps(p).length && <span className="text-xs text-muted-foreground">哪边都没装</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

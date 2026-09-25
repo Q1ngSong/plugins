@@ -1,0 +1,160 @@
+# 插件中心
+
+让 Claude Code 和 Codex 用同一份插件。
+
+Windows 桌面程序，安装包 2 MB 出头，下载就能用，不需要 Python。
+
+![插件只在 ~/.yuwanplugins 里存一份，Claude Code 和 Codex 都用目录链接指向它](assets/hero.svg)
+
+## 起因
+
+我写了一个插件，叫 [design-code-like-a-human](https://github.com/Q1ngSong/design-code-like-a-human)。同一份代码，同时装在 Claude Code 和 Codex 里。用了一阵，两边开始各过各的日子。
+
+Claude Code 那边一直停在 9 月 5 日的版本。仓库里明明有新提交，`claude plugin update` 每次都回答已经是最新。后来翻了它的源码才明白：它只认 `plugin.json` 里的版本号，而那个数字我一直没动过。
+
+Codex 没有更新命令，我只好手动把插件文件夹整个换掉，换之前先备份一份。等回过头看，`~/plugins` 下面已经躺着 11 个 `.backup-` 开头的文件夹。
+
+最难察觉的是开关。切换 API 服务商的工具会把 `~/.claude/settings.json` 整份重写，插件的启用状态就这么没了，不报错，也没有任何提示。
+
+这三件事说到底是一回事：一个插件在电脑上存了好几份，每份归不同的程序管。插件中心的办法是只留一份，放在 `~/.yuwanplugins`，两个 app 都用目录链接指过来。更新就是在这一份里 `git pull`，两边一起生效。
+
+## 安装
+
+到 [Releases](../../releases) 下载 `PluginHub_<版本>_x64-setup.exe`，双击安装。装在当前用户目录下，用不着管理员权限。
+
+电脑上要有 [Git for Windows](https://git-scm.com/download/win)，Claude Code 和 Codex 至少装一个。WebView2 是 Windows 10 和 11 自带的，万一缺了，安装程序会自己补上。
+
+安装包没有代码签名，第一次运行时 SmartScreen 会拦一下，点「更多信息」，再点「仍要运行」。
+
+## 用起来
+
+### 打开就能看到全部
+
+![首页：本机所有插件排成一面卡片墙，标出装在哪个 app、有没有新版本](assets/home.svg)
+
+首页是一面卡片墙。本机装的插件都在这里，Claude Code 的和 Codex 的放在一起，同名的合成一张。卡片底部的小色块说明它装在哪边：橙色是 Claude Code，绿色是 Codex。
+
+右上角三个按钮：删除、同步、打开仓库。只装在一边的插件会多一个安装按钮，用来装到另一边。有新版本、被锁定、文件夹里有改动、检查没通过，卡片上都会直接标出来。
+
+点开卡片是详情页：每个 app 里装的是哪个版本，最近一次检查的结果，还有哪些项目用过它。项目是从两边的会话记录里数出来的。
+
+### 加插件时不用填版本号
+
+![添加插件：填仓库地址，列出各分支的版本和最新提交，选一个分支和要装的 app](assets/add.svg)
+
+贴一个仓库地址，点查询。插件中心会把每个分支最新的那次提交拉下来看一眼，只读清单文件，不下载大文件。每个分支上插件是什么版本、最后一次提交写了什么、支持哪个 app，都列在那里。
+
+你要做的只是挑一个分支，勾上要装的 app。以后它就跟着这个分支走。装完会马上做一次真实检查，后面会讲这是什么。
+
+### 只装在一边的插件
+
+![移植：把只为 Codex 写的插件的 skill 复制出来，补上清单，再链接进 Claude Code](assets/install.svg)
+
+插件自带两边的清单，就直接链接过去。只为一个 app 写的，插件中心会把它的 skill 复制一份到 `~/.yuwanplugins`，补上另一边的清单，再链接进去。
+
+skill 的格式两边通用，钩子、MCP 服务和 App 集成不是，所以这些不会带过去。有的插件全靠 MCP 或钩子干活，一个 skill 也没有，这种装不过去，页面上会写明原因。原插件更新以后，点一下同步就会重新复制。
+
+### 更新是一次 git pull
+
+![以前每个 app 一份副本，各更各的；现在 git pull 一次，两边都读到新文件](assets/sync.svg)
+
+两个 app 链接的是同一个文件夹，所以更新就是在这个文件夹里拉一次代码。不复制，不重装，也不看版本号。上游改写了历史（force push），照样跟得上。
+
+拉取之后，开着的对话下次读 SKILL.md 就是新内容。新增或删掉 skill、改了描述或钩子，要新开一个对话才看得到；Claude Code 里也可以用 `/reload-plugins`。
+
+想省事的话，在设置里打开自动更新，它会按间隔在后台拉取。
+
+### 在插件文件夹里改了东西
+
+![插件文件夹里有修改时，同步停止拉取，可以锁定保留修改，也可以另存一份再还原](assets/lock.svg)
+
+`~/.yuwanplugins` 里的插件是给 app 读的，最好别在里面改。可人总会手痒，改一行看看效果，顺手再提交一下。
+
+插件中心认得出这些改动：没提交的文件、本地提交、切到了别的分支。一旦发现，同步就不再拉取，免得把你的修改冲掉，然后请你二选一。
+
+**锁定，保留修改。** 从此不检查、不同步，同步按钮变灰。想恢复，再点一下详情页右上角的锁。
+
+**另存并还原。** 整个文件夹连同 `.git` 存进 `~/.pluginhub/saved`，本地提交也在里面。插件文件夹回到仓库里的样子，继续跟着分支更新。
+
+锁定只管拉取。链接或配置被别的程序改坏了，后台检查照样会修。
+
+### 它真的加载了吗
+
+![真实检查：Claude Code 跑 plugin list 和 plugin details，Codex 跑 plugin list 和 debug prompt-input](assets/verify.svg)
+
+配置文件写对了，不代表 app 真的把插件加载了进去。插件中心的办法是直接去问 app。
+
+Claude Code 那边，跑 `claude plugin list` 和 `claude plugin details`，看插件在不在、开没开，再把它列出的 skill 跟插件里的逐个对上。Codex 那边，除了 `codex plugin list`，还让它把真正交给模型的提示渲染出来（`codex debug prompt-input`），在里面一个个找 skill，并确认每个 SKILL.md 的路径都在 `~/.yuwanplugins` 里，读的不是缓存里的旧副本。
+
+装完、检查更新、后台检查时都会跑一遍。详情页里每个 app 的卡片上也能随时点「现在检查」。没通过的插件，首页卡片上会标「要检查」。
+
+### 配置被别的程序改掉
+
+![后台检查：别的程序改掉配置后，每天一次的检查发现问题、修好，并在日志和详情页里写明](assets/guard.svg)
+
+这个功能是被前面那个切换服务商的工具逼出来的。在设置里打开「后台检查」，插件中心每天把两边的插件配置过一遍：`settings.json` 和 `config.toml` 有没有被重写，Codex 的个人插件源有没有被改，链接还在不在。
+
+发现问题就修好，把是哪个文件、什么时候改的记进日志，再做一次真实检查。详情页里对应的 app 卡片上也会写一句：什么时候发现了什么，修好了没有。
+
+后台任务优先用 Windows 的计划任务，没有权限建计划任务的机器上，改成开机自启的后台进程。两种方式跑的都是装好的那个程序。
+
+### 两个删除按钮
+
+![首页卡片上的删除从所有 app 删掉；详情页里 app 卡片上的删除只动那一个 app](assets/delete.svg)
+
+首页卡片上的删除，会把插件从所有 app 里删掉；详情页里每个 app 卡片右上角的删除，只动那一个 app。
+
+删除只去掉链接和登记，不碰文件。插件中心不再管理的插件，文件夹挪进 `~/.pluginhub/backups`，每个插件留最近 3 份。
+
+### 命令行
+
+![命令行：pluginhub.exe --run status 打印每个插件在两边的状态](assets/cli.svg)
+
+同一个 `pluginhub.exe` 加上 `--run` 就是命令行，后台任务用的也是它。安装后它在 `%LOCALAPPDATA%\插件中心\pluginhub.exe`。
+
+| 命令 | 做什么 |
+|---|---|
+| `--run status` | 打印状态 |
+| `--run check` | 检查有没有新版本（锁定的跳过），再做一遍真实检查 |
+| `--run update [插件] [--force]` | 拉取最新，同步到两边 |
+| `--run guard` | 马上做一次后台检查 |
+| `--run add <仓库> [--branch B]` | 接管一个插件，不写分支就用默认分支 |
+| `--run install [--interval 分钟]` | 打开自动更新 |
+| `--run uninstall` | 关掉后台检查、自动更新和后台任务 |
+| `--run serve [--port N] [--no-browser]` | 在浏览器里打开管理页面 |
+| `--run api <接口> [JSON]` | 直接调用页面用的接口，输出 JSON |
+
+它是个窗口程序，cmd 不会等它跑完。要看输出，在 PowerShell 里末尾加 `| Out-Host`，或者用 `cmd /c start /wait`。
+
+## 背后的做法
+
+Windows 的目录链接（junction）普通用户就能建，删掉链接也不会动到它指向的文件夹。插件中心靠的就是它。
+
+Claude Code 会把 `~/.claude/skills` 下带 `.claude-plugin/plugin.json` 的文件夹就地加载成 `<名字>@skills-dir`，不往缓存里复制。所以链接一放，它读的就是 `~/.yuwanplugins` 里的那份。
+
+Codex 麻烦一些。它只认自己缓存里的真实文件夹，整个缓存目录换成链接，会被它悄悄忽略。插件中心先用 `codex plugin add` 正常装一份，再把缓存里的 `skills/`、`hooks/` 这些子文件夹逐个换成链接，清单文件还是复制的。Codex 顺着子文件夹的链接读文件，改动就能直接生效。插件的版本号变了，缓存目录的名字跟着变，插件中心会重新装一次。
+
+## 文件放在哪
+
+| 位置 | 内容 |
+|---|---|
+| `~/.yuwanplugins/<名字>` | 插件本体，一份 git 克隆，两边都链接到这里 |
+| `~/.pluginhub/config.json` | 管理的插件和设置 |
+| `~/.pluginhub/hub.log` | 日志 |
+| `~/.pluginhub/usage.json` | 会话记录的扫描缓存，删了会重扫 |
+| `~/.pluginhub/backups` | 不再管理的插件和以前复制出来的旧文件夹，每个插件留 3 份 |
+| `~/.pluginhub/saved` | 另存并还原时存下的修改，不会自动删 |
+
+## 还没做的
+
+- 只有 Windows 版。macOS 要把目录链接换成符号链接、把计划任务换成 launchd，还没动手。
+- 安装包没有代码签名。
+- 只管 Claude Code 和 Codex 这两个 app。
+
+## 开发
+
+界面是 React，程序是 Rust（Tauri 2）。怎么构建、打包、测试，见 [pluginhub/README.md](pluginhub/README.md)。
+
+## 许可
+
+[MIT](LICENSE)

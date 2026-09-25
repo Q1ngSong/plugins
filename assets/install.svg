@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="318" viewBox="0 0 840 318" role="img" aria-labelledby="title desc">
+<title id="title">只装在一边的插件，装到另一边</title>
+<desc id="desc">只为 Codex 写的插件：把 skill 复制一份到 ~/.yuwanplugins/&lt;名字&gt;，补上两边的清单，再从 Claude Code 链接过去。钩子、MCP 服务和 App 集成两边格式不同，不带过去。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--cc:#c2552f;--cx:#0b8a6a;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--oktx:#047857;--panel:#ffffff}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--cc:#f0936c;--cx:#4fd1a8;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--oktx:#6ee7b7;--panel:#232326}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-cc{fill:var(--cc)}.f-cx{fill:var(--cx)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-oktx{fill:var(--oktx)}.f-panel{fill:var(--panel)}.s-cc{stroke:var(--cc)}.s-edge{stroke:var(--edge)}.s-ink2{stroke:var(--ink2)}.s-ink3{stroke:var(--ink3)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}.s-oktx{stroke:var(--oktx)}</style>
+<defs><clipPath id="c1"><rect x="24" y="44" width="220" height="196" rx="12"/></clipPath><clipPath id="c2"><rect x="588" y="44" width="228" height="196" rx="12"/></clipPath></defs>
+<rect x="0.5" y="0.5" width="839" height="317" rx="16" class="f-bg s-edge"/>
+<rect x="24" y="44" width="220" height="196" rx="12" class="f-panel s-line"/><rect x="24" y="44" width="220" height="3" class="f-cx" clip-path="url(#c1)"/>
+<text x="40" y="72" class="f-cx b" style="font-size:13.5px">Codex 里的插件</text>
+<text x="40" y="100" class="m b" style="font-size:12px">&lt;名字&gt;/</text>
+<text x="40" y="124" class="f-ink2 m" style="font-size:12px" xml:space="preserve">├ .codex-plugin/</text>
+<text x="40" y="146" class="m" style="font-size:12px" xml:space="preserve">├ skills/</text>
+<g transform="translate(184 135) scale(0.54)"><path class="ic s-oktx" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:2.6"/></g>
+<text x="201" y="146" class="f-oktx" style="font-size:11.5px">带走</text>
+<text x="40" y="168" class="f-ink3 m" style="font-size:12px" xml:space="preserve">├ hooks/</text>
+<g transform="translate(184 157) scale(0.54)"><path class="ic s-ink3" d="M6.5 6.5l11 11M17.5 6.5l-11 11" style="stroke-width:2.6"/></g>
+<text x="201" y="168" class="f-ink3" style="font-size:11.5px">不带</text>
+<text x="40" y="190" class="f-ink3 m" style="font-size:12px" xml:space="preserve">├ .mcp.json</text>
+<g transform="translate(184 179) scale(0.54)"><path class="ic s-ink3" d="M6.5 6.5l11 11M17.5 6.5l-11 11" style="stroke-width:2.6"/></g>
+<text x="201" y="190" class="f-ink3" style="font-size:11.5px">不带</text>
+<text x="40" y="212" class="f-ink3 m" style="font-size:12px" xml:space="preserve">└ .app.json</text>
+<g transform="translate(184 201) scale(0.54)"><path class="ic s-ink3" d="M6.5 6.5l11 11M17.5 6.5l-11 11" style="stroke-width:2.6"/></g>
+<text x="201" y="212" class="f-ink3" style="font-size:11.5px">不带</text>
+<path d="M296 62a10 10 0 0 1 10-10h58a6 6 0 0 1 4.6 2.2l5.4 6.6a6 6 0 0 0 4.6 2.2H526a10 10 0 0 1 10 10V222a10 10 0 0 1-10 10H306a10 10 0 0 1-10-10z" class="f-panel s-line2" stroke-width="1.2"/>
+<text x="312" y="90" class="m b" style="font-size:12.5px">~/.yuwanplugins/&lt;名字&gt;/</text>
+<line x1="312" y1="102" x2="520" y2="102" class="s-line"/>
+<text x="312" y="126" class="f-ink2 m" style="font-size:12px">skills/</text>
+<text x="520" y="126" class="f-oktx" style="font-size:11.5px" text-anchor="end">复制过来</text>
+<text x="312" y="150" class="f-ink2 m" style="font-size:12px">.claude-plugin/</text>
+<text x="520" y="150" class="f-ink3" style="font-size:11.5px" text-anchor="end">补上</text>
+<text x="312" y="174" class="f-ink2 m" style="font-size:12px">.codex-plugin/</text>
+<text x="520" y="174" class="f-ink3" style="font-size:11.5px" text-anchor="end">补上</text>
+<text x="312" y="198" class="f-ink2 m" style="font-size:12px">.pluginhub-port.json</text>
+<text x="520" y="198" class="f-ink3" style="font-size:11.5px" text-anchor="end">记着来源</text>
+<rect x="588" y="44" width="228" height="196" rx="12" class="f-panel s-line"/><rect x="588" y="44" width="228" height="3" class="f-cc" clip-path="url(#c2)"/>
+<text x="604" y="72" class="f-cc b" style="font-size:13.5px">Claude Code</text>
+<text x="604" y="100" class="m" style="font-size:11.5px">~/.claude/skills/&lt;名字&gt;</text>
+<text x="604" y="126" class="f-ink2" style="font-size:12px">链接到中间这一份，就地加载为</text>
+<text x="604" y="146" class="f-ink3 m" style="font-size:11px">&lt;名字&gt;@skills-dir</text>
+<line x1="604" y1="170" x2="800" y2="170" class="s-line"/>
+<text x="604" y="196" class="f-ink3" style="font-size:11.5px">Codex 里的原插件更新后，</text>
+<text x="604" y="215" class="f-ink3" style="font-size:11.5px">点同步会重新复制一遍</text>
+<line x1="246" y1="150" x2="288" y2="150" class="s-ink2" stroke-width="1.5"/><path d="M294 150L287 153.5L287 146.5Z" class="f-ink2"/>
+<text x="270" y="142" class="f-ink2" style="font-size:11.5px" text-anchor="middle">复制</text>
+<line x1="586" y1="150" x2="544" y2="150" class="s-cc" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M538 150L545 146.5L545 153.5Z" class="f-cc"/>
+<text x="562" y="142" class="f-cc" style="font-size:11.5px" text-anchor="middle">链接</text>
+<text x="24" y="272" class="f-ink2" style="font-size:12.5px">自带两边清单的插件不用走这一步，直接链接。只为一边写的，才复制 skill。</text>
+<text x="24" y="294" class="f-ink2" style="font-size:12.5px">钩子、MCP 服务、App 集成两边格式不同，不带过去；插件要是只靠这些工作，页面上会写明装不了的原因。</text>
+</svg>

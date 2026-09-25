@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="360" viewBox="0 0 840 360" role="img" aria-labelledby="title desc">
+<title id="title">一份插件，两个 app</title>
+<desc id="desc">插件在 ~/.yuwanplugins 里只存一份 git 克隆。Claude Code 的 ~/.claude/skills/&lt;名字&gt; 和 Codex 缓存里的子文件夹都是指向它的目录链接，拉取一次，两边读到的就都是新文件。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--cc:#c2552f;--cx:#0b8a6a;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--panel:#ffffff}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--cc:#f0936c;--cx:#4fd1a8;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--panel:#232326}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-cc{fill:var(--cc)}.f-cx{fill:var(--cx)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-panel{fill:var(--panel)}.s-cc{stroke:var(--cc)}.s-cx{stroke:var(--cx)}.s-edge{stroke:var(--edge)}.s-ink2{stroke:var(--ink2)}.s-ink3{stroke:var(--ink3)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}</style>
+<defs><clipPath id="c1"><rect x="24" y="134" width="204" height="140" rx="12"/></clipPath><clipPath id="c2"><rect x="612" y="134" width="204" height="140" rx="12"/></clipPath></defs>
+<rect x="0.5" y="0.5" width="839" height="359" rx="16" class="f-bg s-edge"/>
+<rect x="330" y="24" width="180" height="50" rx="10" class="f-panel s-line"/>
+<g transform="translate(344 40) scale(0.75)"><path class="ic s-ink2" d="M4.7 5.8a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM4.7 18.2a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM14.7 5.8a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM7 8.1v7.8M17 8.1c0 5-3.6 7.2-8.3 8.3"/></g>
+<text x="370" y="46" class="b" style="font-size:13px">插件仓库</text>
+<text x="370" y="63" class="f-ink3" style="font-size:11.5px">跟踪一个分支</text>
+<line x1="420" y1="76" x2="420" y2="110" class="s-ink3" stroke-width="1.5"/><path d="M420 116L416.5 109L423.5 109Z" class="f-ink3"/>
+<text x="430" y="100" class="f-ink2 m" style="font-size:11.5px">git pull</text>
+<path d="M300 128a10 10 0 0 1 10-10h58a6 6 0 0 1 4.6 2.2l5.4 6.6a6 6 0 0 0 4.6 2.2H530a10 10 0 0 1 10 10V272a10 10 0 0 1-10 10H310a10 10 0 0 1-10-10z" class="f-panel s-line2" stroke-width="1.2"/>
+<text x="316" y="156" class="m b" style="font-size:12.5px">~/.yuwanplugins/&lt;名字&gt;/</text>
+<line x1="316" y1="168" x2="524" y2="168" class="s-line"/>
+<circle cx="322" cy="184" r="3" class="f-ink3"/>
+<text x="332" y="188" class="f-ink2 m" style="font-size:12px">.git/</text>
+<text x="524" y="188" class="f-ink3" style="font-size:11px" text-anchor="end">git 克隆</text>
+<circle cx="322" cy="203" r="3" class="f-cc"/>
+<text x="332" y="207" class="f-ink2 m" style="font-size:12px">.claude-plugin/</text>
+<circle cx="322" cy="222" r="3" class="f-cx"/>
+<text x="332" y="226" class="f-ink2 m" style="font-size:12px">.codex-plugin/</text>
+<circle cx="322" cy="241" r="3" class="f-ink3"/>
+<text x="332" y="245" class="f-ink2 m" style="font-size:12px">skills/</text>
+<text x="524" y="245" class="f-ink3" style="font-size:11px" text-anchor="end">两边通用</text>
+<circle cx="322" cy="260" r="3" class="f-ink3"/>
+<text x="332" y="264" class="f-ink2 m" style="font-size:12px">hooks/</text>
+<text x="420" y="304" class="f-ink2" style="font-size:12px" text-anchor="middle">唯一存放处</text>
+<rect x="24" y="134" width="204" height="140" rx="12" class="f-panel s-line"/><rect x="24" y="134" width="204" height="3" class="f-cc" clip-path="url(#c1)"/>
+<text x="40" y="162" class="f-cc b" style="font-size:14px">Claude Code</text>
+<text x="40" y="188" class="m" style="font-size:11.5px">~/.claude/skills/&lt;名字&gt;</text>
+<text x="40" y="214" class="f-ink2" style="font-size:12px">目录链接，指向中间这一份</text>
+<text x="40" y="233" class="f-ink2" style="font-size:12px">就地加载，不复制</text>
+<text x="40" y="258" class="f-ink3 m" style="font-size:11px">&lt;名字&gt;@skills-dir</text>
+<rect x="612" y="134" width="204" height="140" rx="12" class="f-panel s-line"/><rect x="612" y="134" width="204" height="3" class="f-cx" clip-path="url(#c2)"/>
+<text x="628" y="162" class="f-cx b" style="font-size:14px">Codex</text>
+<text x="628" y="188" class="m" style="font-size:11.5px">~/.codex/plugins/cache/</text>
+<text x="628" y="206" class="m" style="font-size:11.5px">personal/&lt;名字&gt;/&lt;版本&gt;/</text>
+<text x="628" y="232" class="f-ink2" style="font-size:12px">子文件夹链接到中间这一份</text>
+<text x="628" y="251" class="f-ink2" style="font-size:12px">清单文件复制一份</text>
+<line x1="229" y1="204" x2="293" y2="204" class="s-cc" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M299 204L292 207.5L292 200.5Z" class="f-cc"/>
+<text x="264" y="196" class="f-cc" style="font-size:11.5px" text-anchor="middle">链接</text>
+<line x1="611" y1="204" x2="547" y2="204" class="s-cx" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M541 204L548 200.5L548 207.5Z" class="f-cx"/>
+<text x="576" y="196" class="f-cx" style="font-size:11.5px" text-anchor="middle">链接</text>
+<rect x="24" y="325" width="10" height="10" rx="2" class="f-cc"/>
+<text x="40" y="334" class="f-ink2" style="font-size:12px">Claude Code</text>
+<rect x="126.92" y="325" width="10" height="10" rx="2" class="f-cx"/>
+<text x="142.92" y="334" class="f-ink2" style="font-size:12px">Codex</text>
+<line x1="197.08" y1="330" x2="223.08" y2="330" class="s-ink3" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="231.08" y="334" class="f-ink2" style="font-size:12px">目录链接（junction）：普通用户就能建，删掉链接不会删到原文件夹</text>
+</svg>

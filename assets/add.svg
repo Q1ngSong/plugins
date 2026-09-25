@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="526" viewBox="0 0 840 526" role="img" aria-labelledby="title desc">
+<title id="title">添加插件：挑分支，不填版本号</title>
+<desc id="desc">填仓库地址点查询，列出每个分支上插件的版本、最新提交和支持的 app；选一个分支、勾上要装的 app，点添加并安装。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--bluebg:#eff6ff;--cc:#c2552f;--ccbg:#fbe9e1;--ccln:#f0c4b2;--cx:#0b8a6a;--cxbg:#dff4ec;--cxln:#aee0cd;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--mark:#27272a;--markt:#ffffff;--panel:#ffffff;--skytag:#e0f2fe;--skytx:#0369a1;--sltag:#e2e8f0;--sltx:#334155;--sunk:#f4f4f5;--white:#ffffff}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--bluebg:#1a2540;--cc:#f0936c;--ccbg:#2e1a12;--ccln:#5a3322;--cx:#4fd1a8;--cxbg:#0f2720;--cxln:#1f4b3d;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--mark:#f4f4f5;--markt:#18181a;--panel:#232326;--skytag:#0c2a3d;--skytx:#7dd3fc;--sltag:#2a303a;--sltx:#cbd5e1;--sunk:#2d2d31}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-blue{fill:var(--blue)}.f-bluebg{fill:var(--bluebg)}.f-cc{fill:var(--cc)}.f-ccbg{fill:var(--ccbg)}.f-cx{fill:var(--cx)}.f-cxbg{fill:var(--cxbg)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-mark{fill:var(--mark)}.f-markt{fill:var(--markt)}.f-panel{fill:var(--panel)}.f-skytag{fill:var(--skytag)}.f-skytx{fill:var(--skytx)}.f-sltag{fill:var(--sltag)}.f-sltx{fill:var(--sltx)}.f-sunk{fill:var(--sunk)}.f-white{fill:var(--white)}.s-blue{stroke:var(--blue)}.s-ccln{stroke:var(--ccln)}.s-cxln{stroke:var(--cxln)}.s-edge{stroke:var(--edge)}.s-ink2{stroke:var(--ink2)}.s-ink3{stroke:var(--ink3)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}.s-white{stroke:var(--white)}</style>
+<rect x="0.5" y="0.5" width="839" height="525" rx="16" class="f-bg s-edge"/>
+<rect x="24" y="24" width="496" height="104" rx="12" class="f-panel s-line"/>
+<text x="40" y="50" class="b" style="font-size:13px">Git 仓库</text>
+<rect x="40" y="62" width="370" height="34" rx="8" class="f-panel s-line2"/>
+<text x="52" y="84" class="m" style="font-size:12.5px">Q1ngSong/design-code-like-a-human</text>
+<rect x="418" y="62" width="86" height="34" rx="8" class="f-panel s-line2"/>
+<g transform="translate(431 71) scale(0.67)"><path class="ic s-ink2" d="M4 10.5a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0 -13 0zM15.5 15.5L20 20"/></g>
+<text x="453" y="84" class="f-ink2" style="font-size:13px">查询</text>
+<text x="40" y="116" class="f-ink3" style="font-size:11.5px">查询只下载各分支最新提交里的清单文件，看有哪些分支、版本号是多少。</text>
+<rect x="24" y="140" width="496" height="226" rx="12" class="f-panel s-line"/>
+<text x="40" y="166" class="b" style="font-size:13px">选择分支</text>
+<text x="40" y="184" class="f-ink3" style="font-size:11.5px">以后会跟着这个分支自动更新</text>
+<rect x="40" y="196" width="464" height="74" rx="10" class="f-panel s-line"/>
+<circle cx="57" cy="214" r="7.5" class="f-panel s-line2" stroke-width="1.3"/>
+<g transform="translate(74 207) scale(0.58)"><path class="ic s-ink3" d="M4.7 5.8a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM4.7 18.2a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM14.7 5.8a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM7 8.1v7.8M17 8.1c0 5-3.6 7.2-8.3 8.3"/></g>
+<text x="93" y="219" class="b" style="font-size:13.5px">main</text>
+<rect x="130.75" y="205" width="34.88" height="18" rx="5" class="f-skytag"/><text x="136.75" y="218" class="f-skytx b" style="font-size:11px">默认</text>
+<rect x="171.63" y="205" width="45" height="18" rx="5" class="f-sltag"/><text x="177.63" y="218" class="f-sltx m" style="font-size:11px">0.1.0</text>
+<rect x="74" y="226" width="58" height="17" rx="4" class="f-sunk"/>
+<text x="79" y="238.5" class="f-ink2 m" style="font-size:11px">40f9de0</text>
+<text x="138" y="238.5" class="f-ink3" style="font-size:11.5px">Merge develop into main · 23 小时前</text>
+<rect x="74.5" y="247.5" width="82.89" height="17" rx="8.5" class="f-ccbg s-ccln"/><circle cx="83" cy="256" r="3" class="f-cc"/><text x="90" y="260" class="f-cc b" style="font-size:11px">Claude Code</text>
+<rect x="164.39" y="247.5" width="51.66" height="17" rx="8.5" class="f-cxbg s-cxln"/><circle cx="172.89" cy="256" r="3" class="f-cx"/><text x="179.89" y="260" class="f-cx b" style="font-size:11px">Codex</text>
+<rect x="40" y="280" width="464" height="74" rx="10" class="f-bluebg s-blue"/>
+<circle cx="57" cy="298" r="7.5" class="f-panel s-blue" stroke-width="1.3"/>
+<circle cx="57" cy="298" r="4" class="f-blue"/>
+<g transform="translate(74 291) scale(0.58)"><path class="ic s-ink3" d="M4.7 5.8a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM4.7 18.2a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM14.7 5.8a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0zM7 8.1v7.8M17 8.1c0 5-3.6 7.2-8.3 8.3"/></g>
+<text x="93" y="303" class="b" style="font-size:13.5px">develop</text>
+<rect x="148.02" y="289" width="45" height="18" rx="5" class="f-sltag"/><text x="154.02" y="302" class="f-sltx m" style="font-size:11px">0.1.0</text>
+<rect x="74" y="310" width="58" height="17" rx="4" class="f-sunk"/>
+<text x="79" y="322.5" class="f-ink2 m" style="font-size:11px">b80ecd6</text>
+<text x="138" y="322.5" class="f-ink3" style="font-size:11.5px">约定 evaluation 部分测评方案 · 12 小时前</text>
+<rect x="74.5" y="331.5" width="82.89" height="17" rx="8.5" class="f-ccbg s-ccln"/><circle cx="83" cy="340" r="3" class="f-cc"/><text x="90" y="344" class="f-cc b" style="font-size:11px">Claude Code</text>
+<rect x="164.39" y="331.5" width="51.66" height="17" rx="8.5" class="f-cxbg s-cxln"/><circle cx="172.89" cy="340" r="3" class="f-cx"/><text x="179.89" y="344" class="f-cx b" style="font-size:11px">Codex</text>
+<rect x="24" y="378" width="496" height="124" rx="12" class="f-panel s-line"/>
+<text x="40" y="404" class="b" style="font-size:13px">装到哪些 app</text>
+<rect x="40" y="416" width="226" height="40" rx="10" class="f-bluebg s-blue"/>
+<rect x="54" y="428" width="16" height="16" rx="4" class="f-blue"/>
+<g transform="translate(55 429) scale(0.58)"><path class="ic s-white" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:3"/></g>
+<rect x="80.5" y="427.5" width="82.89" height="17" rx="8.5" class="f-ccbg s-ccln"/><circle cx="89" cy="436" r="3" class="f-cc"/><text x="96" y="440" class="f-cc b" style="font-size:11px">Claude Code</text>
+<rect x="278" y="416" width="226" height="40" rx="10" class="f-bluebg s-blue"/>
+<rect x="292" y="428" width="16" height="16" rx="4" class="f-blue"/>
+<g transform="translate(293 429) scale(0.58)"><path class="ic s-white" d="M5 12.5l4.5 4.5L19 7.5" style="stroke-width:3"/></g>
+<rect x="318.5" y="427.5" width="51.66" height="17" rx="8.5" class="f-cxbg s-cxln"/><circle cx="327" cy="436" r="3" class="f-cx"/><text x="334" y="440" class="f-cx b" style="font-size:11px">Codex</text>
+<text x="40" y="483" class="f-ink3" style="font-size:11.5px">插件会克隆到 ~/.yuwanplugins，选中的 app 链接到那里。</text>
+<rect x="404" y="466" width="100" height="30" rx="8" class="f-blue"/>
+<text x="454" y="485.5" class="f-white b" style="font-size:12.5px" text-anchor="middle">添加并安装</text>
+<line x1="508" y1="79" x2="548" y2="79" class="s-ink3" stroke-dasharray="3 3"/>
+<circle cx="560" cy="79" r="10" class="f-mark"/><text x="560" y="83.3" class="f-markt b" style="font-size:12px" text-anchor="middle">1</text>
+<text x="580" y="83.5" class="f-ink2" style="font-size:12.5px">贴上仓库地址，点查询。</text>
+<text x="580" y="103.5" class="f-ink2" style="font-size:12.5px">owner/repo 这种简写也行。</text>
+<line x1="508" y1="238" x2="548" y2="238" class="s-ink3" stroke-dasharray="3 3"/>
+<circle cx="560" cy="238" r="10" class="f-mark"/><text x="560" y="242.3" class="f-markt b" style="font-size:12px" text-anchor="middle">2</text>
+<text x="580" y="242.5" class="f-ink2" style="font-size:12.5px">每个分支上插件的版本号、</text>
+<text x="580" y="262.5" class="f-ink2" style="font-size:12.5px">最后一次提交、支持哪个 app，</text>
+<text x="580" y="282.5" class="f-ink2" style="font-size:12.5px">都替你查好了。你只挑分支。</text>
+<line x1="508" y1="436" x2="548" y2="436" class="s-ink3" stroke-dasharray="3 3"/>
+<circle cx="560" cy="436" r="10" class="f-mark"/><text x="560" y="440.3" class="f-markt b" style="font-size:12px" text-anchor="middle">3</text>
+<text x="580" y="440.5" class="f-ink2" style="font-size:12.5px">勾上要装的 app，点添加。</text>
+<text x="580" y="460.5" class="f-ink2" style="font-size:12.5px">之后它跟着这个分支更新，</text>
+<text x="580" y="480.5" class="f-ink2" style="font-size:12.5px">装完马上做一遍真实检查。</text>
+</svg>

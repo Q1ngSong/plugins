@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="320" viewBox="0 0 840 320" role="img" aria-labelledby="title desc">
+<title id="title">更新：以前和现在</title>
+<desc id="desc">以前每个 app 一份副本：Claude Code 只认 plugin.json 里的版本号，版本号没变就不更新；Codex 靠手动换文件夹，攒下 11 个备份。现在只有一份，git pull 一次，两边都读到新文件。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--cc:#c2552f;--ccbg:#fbe9e1;--ccln:#f0c4b2;--cx:#0b8a6a;--cxbg:#dff4ec;--cxln:#aee0cd;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--panel:#ffffff;--rdtag:#fee2e2;--rdtx:#dc2626;--sunk:#f4f4f5}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--cc:#f0936c;--ccbg:#2e1a12;--ccln:#5a3322;--cx:#4fd1a8;--cxbg:#0f2720;--cxln:#1f4b3d;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--panel:#232326;--rdtag:#3f1d1d;--rdtx:#fca5a5;--sunk:#2d2d31}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-cc{fill:var(--cc)}.f-ccbg{fill:var(--ccbg)}.f-cx{fill:var(--cx)}.f-cxbg{fill:var(--cxbg)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-panel{fill:var(--panel)}.f-rdtag{fill:var(--rdtag)}.f-rdtx{fill:var(--rdtx)}.f-sunk{fill:var(--sunk)}.s-ccln{stroke:var(--ccln)}.s-cxln{stroke:var(--cxln)}.s-edge{stroke:var(--edge)}.s-ink3{stroke:var(--ink3)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}</style>
+<rect x="0.5" y="0.5" width="839" height="319" rx="16" class="f-bg s-edge"/>
+<rect x="24" y="24" width="380" height="272" rx="12" class="f-panel s-line"/>
+<rect x="436" y="24" width="380" height="272" rx="12" class="f-panel s-line"/>
+<text x="44" y="56" class="b" style="font-size:15px">以前</text>
+<text x="84" y="56" class="f-ink3" style="font-size:12px">每个 app 一份副本，各更各的</text>
+<rect x="44.5" y="76.5" width="82.89" height="17" rx="8.5" class="f-ccbg s-ccln"/><circle cx="53" cy="85" r="3" class="f-cc"/><text x="60" y="89" class="f-cc b" style="font-size:11px">Claude Code</text>
+<rect x="44" y="104" width="100" height="40" rx="8" class="f-sunk"/>
+<text x="94" y="128.5" class="f-ink2" style="font-size:12px" text-anchor="middle">有新提交</text>
+<line x1="148" y1="124" x2="162" y2="124" class="s-ink3" stroke-width="1.5"/><path d="M168 124L161 127.5L161 120.5Z" class="f-ink3"/>
+<rect x="172" y="104" width="110" height="40" rx="8" class="f-sunk"/>
+<text x="227" y="120" class="f-ink2 m" style="font-size:11px" text-anchor="middle">plugin.json</text>
+<text x="227" y="137" class="f-ink2" style="font-size:11.5px" text-anchor="middle">还是 0.1.0</text>
+<line x1="286" y1="124" x2="298" y2="124" class="s-ink3" stroke-width="1.5"/><path d="M304 124L297 127.5L297 120.5Z" class="f-ink3"/>
+<rect x="308" y="104" width="80" height="40" rx="8" class="f-rdtag"/>
+<text x="348" y="128.5" class="f-rdtx b" style="font-size:12px" text-anchor="middle">“已是最新”</text>
+<text x="44" y="166" class="f-ink3" style="font-size:11.5px">它只认 plugin.json 里的版本号</text>
+<rect x="44.5" y="186.5" width="51.66" height="17" rx="8.5" class="f-cxbg s-cxln"/><circle cx="53" cy="195" r="3" class="f-cx"/><text x="60" y="199" class="f-cx b" style="font-size:11px">Codex</text>
+<rect x="44" y="214" width="100" height="40" rx="8" class="f-sunk"/>
+<text x="94" y="238.5" class="f-ink2" style="font-size:12px" text-anchor="middle">手动换文件夹</text>
+<line x1="148" y1="234" x2="162" y2="234" class="s-ink3" stroke-width="1.5"/><path d="M168 234L161 237.5L161 230.5Z" class="f-ink3"/>
+<path d="M176 227q0-3 3-3h6.5l2.5 3H199q3 0 3 3v13q0 3-3 3H179q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M184.5 227q0-3 3-3h6.5l2.5 3H207.5q3 0 3 3v13q0 3-3 3H187.5q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M193 227q0-3 3-3h6.5l2.5 3H216q3 0 3 3v13q0 3-3 3H196q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M201.5 227q0-3 3-3h6.5l2.5 3H224.5q3 0 3 3v13q0 3-3 3H204.5q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M210 227q0-3 3-3h6.5l2.5 3H233q3 0 3 3v13q0 3-3 3H213q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M218.5 227q0-3 3-3h6.5l2.5 3H241.5q3 0 3 3v13q0 3-3 3H221.5q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M227 227q0-3 3-3h6.5l2.5 3H250q3 0 3 3v13q0 3-3 3H230q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M235.5 227q0-3 3-3h6.5l2.5 3H258.5q3 0 3 3v13q0 3-3 3H238.5q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M244 227q0-3 3-3h6.5l2.5 3H267q3 0 3 3v13q0 3-3 3H247q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M252.5 227q0-3 3-3h6.5l2.5 3H275.5q3 0 3 3v13q0 3-3 3H255.5q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<path d="M261 227q0-3 3-3h6.5l2.5 3H284q3 0 3 3v13q0 3-3 3H264q-3 0-3-3z" class="f-panel s-ink3" stroke-width="1"/>
+<text x="300" y="231" class="f-ink2 m" style="font-size:11px">.backup-*</text>
+<text x="300" y="248" class="f-rdtx b" style="font-size:11.5px">攒了 11 个</text>
+<text x="44" y="280" class="f-ink3" style="font-size:11.5px">两边的版本、内容、备份，都得自己记着</text>
+<text x="456" y="56" class="b" style="font-size:15px">现在</text>
+<text x="496" y="56" class="f-ink3" style="font-size:12px">只存一份，两边链接过去</text>
+<rect x="456" y="88" width="96" height="36" rx="8" class="f-sunk"/>
+<text x="504" y="111" class="m" style="font-size:12.5px" text-anchor="middle">git pull</text>
+<line x1="556" y1="106" x2="576" y2="106" class="s-ink3" stroke-width="1.5"/><path d="M582 106L575 109.5L575 102.5Z" class="f-ink3"/>
+<path d="M586 92a8 8 0 0 1 8-8h40a6 6 0 0 1 4.6 2.2l5.4 6.6a6 6 0 0 0 4.6 2.2H788a8 8 0 0 1 8 8V122a8 8 0 0 1-8 8H594a8 8 0 0 1-8-8z" class="f-panel s-line2" stroke-width="1.2"/>
+<text x="600" y="116" class="m" style="font-size:11.5px">~/.yuwanplugins/&lt;名字&gt;/</text>
+<line x1="691" y1="130" x2="691" y2="146" class="s-ink3" stroke-width="1.5"/>
+<line x1="560" y1="146" x2="724" y2="146" class="s-ink3" stroke-width="1.5"/>
+<line x1="560" y1="146" x2="560" y2="158" class="s-ink3" stroke-width="1.5"/><path d="M560 164L556.5 157L563.5 157Z" class="f-ink3"/>
+<line x1="724" y1="146" x2="724" y2="158" class="s-ink3" stroke-width="1.5"/><path d="M724 164L720.5 157L727.5 157Z" class="f-ink3"/>
+<rect x="476" y="166" width="168" height="44" rx="8" class="f-ccbg s-ccln"/>
+<text x="490" y="184" class="f-cc b" style="font-size:12.5px">Claude Code</text>
+<text x="490" y="201" class="f-ink2" style="font-size:11.5px">读到新文件</text>
+<rect x="652" y="166" width="144" height="44" rx="8" class="f-cxbg s-cxln"/>
+<text x="666" y="184" class="f-cx b" style="font-size:12.5px">Codex</text>
+<text x="666" y="201" class="f-ink2" style="font-size:11.5px">读到新文件</text>
+<text x="456" y="240" class="f-ink2" style="font-size:12px">不复制，不重装，也不看版本号。</text>
+<text x="456" y="260" class="f-ink2" style="font-size:12px">开着的对话，下次读 SKILL.md 就是新内容；</text>
+<text x="456" y="280" class="f-ink2" style="font-size:12px">新增或删掉 skill，要新开一个对话。</text>
+</svg>

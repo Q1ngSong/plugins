@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 210 100% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 210 100% 56%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 240 5% 12%;
+    --foreground: 0 0% 98%;
+    --card: 240 5% 16%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 5% 16%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 210 100% 54%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 18%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 5% 18%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 5% 18%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5% 24%;
+    --input: 240 5% 24%;
+    --ring: 210 100% 54%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body { @apply bg-background text-foreground; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+  *:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+}
+
+/* 声音卡片波形（装饰） */
+.wave-playing i { animation: wave-bounce .6s ease-in-out infinite alternate; transform-origin: bottom; }
+@keyframes wave-bounce { from { transform: scaleY(.4); } to { transform: scaleY(1); } }
+
+/* 切换页面时的淡入 */
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(16px); } }
+.animate-fade-in { animation: fade-in .18s ease-out; }
+.animate-slide-in { animation: slide-in .18s ease-out; }

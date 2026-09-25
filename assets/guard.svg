@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="372" viewBox="0 0 840 372" role="img" aria-labelledby="title desc">
+<title id="title">后台检查：配置被别的程序改掉时</title>
+<desc id="desc">别的程序重写了 config.toml、删掉了链接，后台检查每天跑一次，发现后修好，在日志和详情页里写明是哪个文件、什么时候被改的，再做一遍真实检查。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--oktx:#047857;--panel:#ffffff;--rdtx:#dc2626;--skybox:#ecf7fe;--skyink:#0c4a6e;--skytx:#0369a1}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--oktx:#6ee7b7;--panel:#232326;--rdtx:#fca5a5;--skybox:#0f2536;--skyink:#bae6fd;--skytx:#7dd3fc}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-blue{fill:var(--blue)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-line2{fill:var(--line2)}.f-oktx{fill:var(--oktx)}.f-panel{fill:var(--panel)}.f-rdtx{fill:var(--rdtx)}.f-skybox{fill:var(--skybox)}.f-skyink{fill:var(--skyink)}.s-edge{stroke:var(--edge)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}.s-panel{stroke:var(--panel)}.s-skytx{stroke:var(--skytx)}</style>
+<rect x="0.5" y="0.5" width="839" height="371" rx="16" class="f-bg s-edge"/>
+<line x1="40" y1="128" x2="790" y2="128" class="s-line2" stroke-width="2"/>
+<path d="M800 128l-10-5.5v11z" class="f-line2"/>
+<rect x="38" y="40" width="184" height="60" rx="9" class="f-panel s-line"/>
+<text x="50" y="64" class="b" style="font-size:12.5px">某个工具重写了 config.toml</text>
+<text x="50" y="85" class="f-ink2" style="font-size:11.5px">插件那一段没了</text>
+<line x1="130" y1="100" x2="130" y2="121" class="s-line2" stroke-width="1.5"/>
+<circle cx="130" cy="128" r="6.5" class="f-rdtx"/>
+<circle cx="130" cy="128" r="6.5" class="nf s-panel" stroke-width="2"/>
+<text x="130" y="152" class="f-ink3" style="font-size:11.5px" text-anchor="middle">09-25 00:15</text>
+<rect x="234" y="40" width="184" height="60" rx="9" class="f-panel s-line"/>
+<text x="246" y="64" class="b" style="font-size:12.5px">~/.claude/skills 被清理</text>
+<text x="246" y="85" class="f-ink2" style="font-size:11.5px">链接没了</text>
+<line x1="326" y1="100" x2="326" y2="121" class="s-line2" stroke-width="1.5"/>
+<circle cx="326" cy="128" r="6.5" class="f-rdtx"/>
+<circle cx="326" cy="128" r="6.5" class="nf s-panel" stroke-width="2"/>
+<text x="326" y="152" class="f-ink3" style="font-size:11.5px" text-anchor="middle">09-25 10:02</text>
+<rect x="430" y="40" width="184" height="60" rx="9" class="f-panel s-line"/>
+<text x="442" y="64" class="b" style="font-size:12.5px">后台检查</text>
+<text x="442" y="85" class="f-ink2" style="font-size:11.5px">每天一次，开机后先跑</text>
+<line x1="522" y1="100" x2="522" y2="121" class="s-line2" stroke-width="1.5"/>
+<circle cx="522" cy="128" r="6.5" class="f-blue"/>
+<circle cx="522" cy="128" r="6.5" class="nf s-panel" stroke-width="2"/>
+<text x="522" y="152" class="f-ink3" style="font-size:11.5px" text-anchor="middle">09-26 09:01</text>
+<rect x="626" y="40" width="184" height="60" rx="9" class="f-panel s-line"/>
+<text x="638" y="64" class="b" style="font-size:12.5px">修好，再做一遍真实检查</text>
+<text x="638" y="85" class="f-ink2" style="font-size:11.5px">两边都通过</text>
+<line x1="718" y1="100" x2="718" y2="121" class="s-line2" stroke-width="1.5"/>
+<circle cx="718" cy="128" r="6.5" class="f-oktx"/>
+<circle cx="718" cy="128" r="6.5" class="nf s-panel" stroke-width="2"/>
+<text x="718" y="152" class="f-ink3" style="font-size:11.5px" text-anchor="middle">09-26 09:01</text>
+<text x="424" y="121" class="f-ink3" style="font-size:11px" text-anchor="middle">这中间没人发现</text>
+<rect x="24" y="172" width="792" height="100" rx="10" class="f-panel s-line"/>
+<text x="40" y="194" class="f-ink3 m" style="font-size:11.5px">~/.pluginhub/hub.log</text>
+<text x="40" y="218" style="font-size:11px" xml:space="preserve"><tspan class="f-ink3 m">2026-09-26 09:01:12  </tspan><tspan class="f-ink2 m">[my-plugin] Codex：发现 config.toml 里没有这个插件（config.toml 修改于 09-25 00:15），</tspan><tspan class="f-oktx b m">已修复</tspan></text>
+<text x="40" y="238" style="font-size:11px" xml:space="preserve"><tspan class="f-ink3 m">2026-09-26 09:01:12  </tspan><tspan class="f-ink2 m">[my-plugin] Claude Code：发现 ~\.claude\skills\my-plugin 这个链接不见了，</tspan><tspan class="f-oktx b m">已修复</tspan></text>
+<text x="40" y="258" style="font-size:11px" xml:space="preserve"><tspan class="f-ink3 m">2026-09-26 09:01:20  </tspan><tspan class="f-ink2 m">真实检查：2 项都通过</tspan></text>
+<text x="28" y="296" class="f-ink3" style="font-size:11.5px">详情页里对应 app 的卡片上也会写出来：</text>
+<rect x="24" y="306" width="792" height="40" rx="8" class="f-skybox"/>
+<g transform="translate(40 318.5) scale(0.62)"><path class="ic s-skytx" d="M14.8 4.2a4.8 4.8 0 0 0-4.5 6.3l-6 6a2.1 2.1 0 1 0 3 3l6-6a4.8 4.8 0 0 0 6.3-4.5l-2.9 2.9-2.9-.9-.9-2.9z"/></g>
+<text x="64" y="331" class="f-skyink" style="font-size:12px">后台检查在 3 小时前发现：config.toml 里没有这个插件（config.toml 修改于 09-25 00:15）。已经修好了。</text>
+</svg>
