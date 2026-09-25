@@ -138,6 +138,27 @@ impl Codex {
         Ok((true, format!("codex plugin list 里已启用，模型提示里能看到 {} 个 skill", seen.len())))
     }
 
+    /// 独立的 skill：渲染出的模型提示里有没有它（一行 - <名字>: <说明> (file: <路径>)），文件打不打得开。
+    ///
+    /// root 是插件中心统一存放它的文件夹；给了就再确认 Codex 读的正是那里的文件。
+    pub fn verify_skill(&mut self, name: &str, root: Option<&Path>) -> R<(bool, String)> {
+        let re = Regex::new(&format!(r"(?m)^- {}: .*\(file: (.+)\)\s*$", regex::escape(name))).unwrap();
+        let text = self.prompt_text()?.to_string();
+        let Some(m) = re.captures(&text) else {
+            return Ok((false, format!("Codex 的模型提示里没有 {name}")));
+        };
+        let file = m[1].trim().to_string();
+        if !Path::new(&file).is_file() {
+            return Ok((false, format!("模型提示里 {name} 指向的 {file} 打不开")));
+        }
+        if let Some(root) = root {
+            if !norm(Path::new(&file)).starts_with(&(norm(root) + "\\")) {
+                return Ok((false, format!("Codex 读的是 {file}，不是 {} 里的那份", display(root))));
+            }
+        }
+        Ok((true, "模型提示里能看到它，文件也打得开".into()))
+    }
+
     pub fn config() -> toml::Table {
         fs::read_to_string(CODEX_HOME.join("config.toml")).ok().and_then(|t| toml::from_str::<toml::Table>(&t).ok()).unwrap_or_default()
     }
@@ -162,7 +183,7 @@ impl Codex {
         read_obj(&PERSONAL_MARKETPLACE)
     }
 
-    pub fn marketplace_name(&self) -> String {
+    pub fn marketplace_name() -> String {
         Self::personal().get("name").and_then(Value::as_str).filter(|s| !s.is_empty()).unwrap_or("personal").to_string()
     }
 
@@ -180,7 +201,7 @@ impl Codex {
     }
 
     pub fn cache_root(&self, name: &str, mkt: Option<&str>) -> PathBuf {
-        CODEX_HOME.join("plugins").join("cache").join(mkt.map(str::to_string).unwrap_or_else(|| self.marketplace_name())).join(name)
+        CODEX_HOME.join("plugins").join("cache").join(mkt.map(str::to_string).unwrap_or_else(Self::marketplace_name)).join(name)
     }
 
     pub fn cache_dir(&self, name: &str, version: &str) -> PathBuf {
@@ -217,7 +238,7 @@ impl Codex {
     }
 
     pub fn status(&self, name: &str, folder: &Path, head: Option<&str>, latest: Option<&str>) -> Value {
-        let cid = format!("{name}@{}", self.marketplace_name());
+        let cid = format!("{name}@{}", Self::marketplace_name());
         let conf = Self::plugin_conf(&cid);
         let versions = self.cache_versions(name, None);
         let cache = self.cache_dir(name, &codex_version(folder));
@@ -268,7 +289,7 @@ impl Codex {
     /// 个人插件源指向插件文件夹；没装或版本号变了就正常装一份，再把缓存里的子文件夹换成链接
     pub fn link(&self, name: &str, folder: &Path, force: bool) -> R<Vec<String>> {
         let mut notes = Vec::new();
-        let cid = format!("{name}@{}", self.marketplace_name());
+        let cid = format!("{name}@{}", Self::marketplace_name());
         if let Some(old) = self.set_entry(name, folder)? {
             if old.exists() && !ours(Some(&old)) {
                 notes.push(format!("旧的源文件夹备份到 {}", display(&backup(&old, name)?)));

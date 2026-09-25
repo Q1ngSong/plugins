@@ -1,7 +1,7 @@
 import { FolderGit2, Lock, PackagePlus, Save, ShieldAlert, ShieldCheck, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppChip, APP_TONE, IconButton, Spinner, Tag } from "@/components/common/bits";
-import { api, APP_NAME, APPS, AppEntry, AppKey, howText, Plugin, short, when } from "@/lib/api";
+import { api, APP_NAME, APPS, AppEntry, AppKey, howText, isSkill, Library, Plugin, Project, short, tokens, when } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 import type { ConfirmFn } from "@/App";
 import { cn } from "@/lib/utils";
@@ -16,24 +16,48 @@ const HINT: Record<string, string> = {
   missing: "还没装。点右上角的同步即可安装。",
   outdated: "远端有新版本，点右上角的同步拉取。",
 };
+/* 独立的 skill：插件中心管的那份只看链接在不在、指向对不对 */
+const SKILL_STATE: Record<string, [Parameters<typeof Tag>[0]["tone"], string]> = {
+  ok: ["emerald", "已链接"], unlinked: ["amber", "不是链接"], missing: ["red", "链接不见了"],
+};
+const SKILL_HINT: Record<string, string> = {
+  unlinked: "这里放的不是指向 ~/.yuwanplugins/skills 的链接。点右上角的同步重新链接；如果是个真实的文件夹，先确认里面没有要留的东西，再从这个 app 删掉它。",
+  missing: "链接不见了。点右上角的同步重新链接；开着后台检查的话，它也会自己修好。",
+};
 
 function AppCard({ p, a, busy, run, confirm }: { p: Plugin; a: AppEntry; busy: string | null; run: Run; confirm: ConfirmFn }) {
-  const ours = !!p.managed && a.state !== undefined; // 插件中心装的那一份才有 state
+  const skill = isSkill(p);
+  const ours = (!!p.managed || !!p.skill?.ours) && a.state !== undefined; // 插件中心装的那一份才有 state
   const others = p.apps.some((x) => x !== a && x.installed && x.state !== undefined);
   const del = async () => {
-    const last = ours && !others ? "\n这是最后一个装了它的 app，删掉后插件中心不再管理它，~/.yuwanplugins 里的插件文件夹挪进备份。" : "";
-    if (!(await confirm({ title: `从 ${APP_NAME[a.app]} 删除`, body: `从 ${APP_NAME[a.app]} 删除「${p.name}」？只影响这一个 app。${last}`, okText: "删除", danger: true }))) return;
+    const last = !ours || others ? ""
+      : skill ? "\n这是最后一个装了它的 app，删掉后插件中心不再管它，~/.yuwanplugins/skills 里统一存放的那份挪进备份。"
+        : "\n这是最后一个装了它的 app，删掉后插件中心不再管理它，~/.yuwanplugins 里的插件文件夹挪进备份。";
+    const keep = skill && !a.linked ? "\n这里是一个真实的文件夹，会挪进 ~/.pluginhub/backups，不会直接删掉。" : "";
+    const body = `从 ${APP_NAME[a.app]} 删除${skill ? "技能" : ""}「${p.name}」？只影响这一个 app。${last}${keep}`;
+    if (!(await confirm({ title: `从 ${APP_NAME[a.app]} 删除`, body, okText: "删除", danger: true }))) return;
     run(`del:${a.app}:${a.id}`, () => api.uninstall(p.key, { id: a.id, app: a.app }), "已删除");
   };
-  const status = ours ? STATE[a.state!] : a.enabled === null ? ["slate", "只装在项目里"] as const : a.enabled ? ["emerald", "已启用"] as const : ["slate", "已停用"] as const;
+  const status = ours ? (skill ? SKILL_STATE : STATE)[a.state!]
+    : skill ? (a.official ? ["slate", "Codex 自带"] as const : a.linked ? ["sky", "链接"] as const : ["emerald", "已安装"] as const)
+      : a.enabled === null ? ["slate", "只装在项目里"] as const : a.enabled ? ["emerald", "已启用"] as const : ["slate", "已停用"] as const;
+  const hints = skill ? SKILL_HINT : HINT;
   const subject = [p.managed?.remote, p.managed?.head].find((c) => c && c.sha === a.commit)?.subject;
-  const rows: [string, React.ReactNode][] = [
-    ["插件 ID", <code className="font-mono text-xs">{a.id}</code>],
-    ["版本", <code className="font-mono text-xs">{a.version || "—"}</code>],
-  ];
-  if (ours) rows.push(["对应提交", a.commit ? <><code className="rounded bg-muted px-1.5 font-mono text-xs">{short(a.commit)}</code> {subject}</> : <span className="text-muted-foreground">—</span>]);
-  rows.push(["开关", !a.installed ? "未安装" : a.enabled === null ? "按项目启用" : a.enabled ? "已启用" : <span className="text-red-500">已停用</span>]);
+  const rows: [string, React.ReactNode][] = [];
+  if (skill) {
+    rows.push(["文件夹", <code className="break-all font-mono text-xs">{a.path || "—"}</code>]);
+    if (a.linked && a.target) rows.push(["指向", <code className="break-all font-mono text-xs">{a.target}</code>]);
+    if (a.version) rows.push(["版本", <code className="font-mono text-xs">{a.version}</code>]);
+  } else {
+    rows.push(["插件 ID", <code className="font-mono text-xs">{a.id}</code>]);
+    rows.push(["版本", <code className="font-mono text-xs">{a.version || "—"}</code>]);
+    if (ours) rows.push(["对应提交", a.commit ? <><code className="rounded bg-muted px-1.5 font-mono text-xs">{short(a.commit)}</code> {subject}</> : <span className="text-muted-foreground">—</span>]);
+    rows.push(["开关", !a.installed ? "未安装" : a.enabled === null ? "按项目启用" : a.enabled ? "已启用" : <span className="text-red-500">已停用</span>]);
+  }
   rows.push(["来源", <span className="break-all">{a.source || "—"}</span>]);
+  const verifyTip = skill
+    ? a.app === "codex" ? "运行 codex debug prompt-input，确认 Codex 的模型提示里有这个技能" : "核对链接和 SKILL.md。Claude Code 没有列出技能的命令，没法让它自己确认"
+    : a.app === "codex" ? "运行 codex plugin list 和 codex debug prompt-input，确认 Codex 真的看得到这些 skill" : "运行 claude plugin list 和 claude plugin details，确认 Claude Code 真的认得这些 skill";
 
   return (
     <section className={cn("relative overflow-hidden rounded-xl border bg-card before:absolute before:inset-x-0 before:top-0 before:h-[3px]", APP_TONE[a.app].bar)}>
@@ -60,17 +84,17 @@ function AppCard({ p, a, busy, run, confirm }: { p: Plugin; a: AppEntry; busy: s
             </span>
           ) : <span className="text-muted-foreground">还没查过</span>}
           <button className="text-xs font-medium text-blue-500 hover:underline disabled:opacity-50" disabled={!!busy}
-            title={a.app === "codex" ? "运行 codex plugin list 和 codex debug prompt-input，确认 Codex 真的看得到这些 skill" : "运行 claude plugin list 和 claude plugin details，确认 Claude Code 真的认得这些 skill"}
+            title={verifyTip}
             onClick={() => run(`verify:${a.app}:${a.id}`, () => api.verify(p.key, a.app), "检查完了")}>
             {busy === `verify:${a.app}:${a.id}` ? <span className="inline-flex items-center gap-1"><Spinner />检查中…</span> : "现在检查"}
           </button>
         </dd>
       </dl>
-      {ours && (HINT[a.state!] || !!a.problems?.length) && (
+      {ours && (hints[a.state!] || !!a.problems?.length) && (
         <div className="mx-4 mb-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
           {!!a.problems?.length && <ul className="list-disc space-y-0.5 pl-4">{a.problems.map((x) => <li key={x}>{x}</li>)}</ul>}
-          {HINT[a.state!] && <p className={cn(!!a.problems?.length && "mt-1")}>
-            {p.managed?.locked ? "已锁定，同步点不了：开着后台检查的话它会自动修好，也可以先解锁再点同步。" : HINT[a.state!]}
+          {hints[a.state!] && <p className={cn(!!a.problems?.length && "mt-1")}>
+            {p.managed?.locked ? "已锁定，同步点不了：开着后台检查的话它会自动修好，也可以先解锁再点同步。" : hints[a.state!]}
           </p>}
         </div>
       )}
@@ -88,20 +112,82 @@ function AppCard({ p, a, busy, run, confirm }: { p: Plugin; a: AppEntry; busy: s
           {a.port.source_missing && ` ${APP_NAME[a.port.from]} 里已经没有这个插件了，副本还能继续用。`}
         </p>
       )}
-      <div className={cn("border-t px-4 py-2 text-xs font-semibold", APP_TONE[a.app].soft)}>用过它的项目（{a.projects.length}）</div>
-      {a.projects.length ? (
-        <ul className="divide-y">
-          {a.projects.map((x) => (
-            <li key={x.path} className="flex items-center gap-3 px-4 py-2 text-[13px]">
-              <FolderGit2 className="h-4 w-4 flex-none text-muted-foreground" />
-              <span className="min-w-0 flex-1 break-all font-mono text-xs">{x.path}</span>
-              {x.scope && <Tag tone="sky">装在这个项目里</Tag>}
-              <span className="w-16 flex-none text-right text-xs text-muted-foreground">{x.count ? `${x.count} 次` : "—"}</span>
-              <span className="w-20 flex-none text-right text-xs text-muted-foreground">{x.last ? when(x.last) : "—"}</span>
-            </li>
+      <Projects list={a.projects} className={APP_TONE[a.app].soft} />
+    </section>
+  );
+}
+
+function Projects({ list, className }: { list: Project[]; className?: string }) {
+  return <>
+    <div className={cn("border-t px-4 py-2 text-xs font-semibold", className)}>用过它的项目（{list.length}）</div>
+    {list.length ? (
+      <ul className="divide-y">
+        {list.map((x) => (
+          <li key={x.path} className="flex items-center gap-3 px-4 py-2 text-[13px]">
+            <FolderGit2 className="h-4 w-4 flex-none text-muted-foreground" />
+            <span className="min-w-0 flex-1 break-all font-mono text-xs">{x.path}</span>
+            {x.scope && <Tag tone="sky">装在这个项目里</Tag>}
+            <span className="w-16 flex-none text-right text-xs text-muted-foreground">{x.count ? `${x.count} 次` : "—"}</span>
+            <span className="w-20 flex-none text-right text-xs text-muted-foreground">{x.last ? when(x.last) : "—"}</span>
+          </li>
+        ))}
+      </ul>
+    ) : <div className="px-4 py-5 text-center text-xs text-muted-foreground">会话记录里还没有项目用过它</div>}
+  </>;
+}
+
+/* 常驻还是按需：按需的从两边卸下，只列在技能库里，模型用到时再读 */
+function LoadMode({ p, busy, run }: { p: Plugin; busy: string | null; run: Run }) {
+  const d = p.demand;
+  if (!d || p.official) return null;
+  const on = !!p.on_demand;
+  const set = (v: boolean) => run(`mode:${p.key}`, () => api.mode(p.key, v), v ? "已改为按需" : "已改为常驻");
+  return (
+    <div className="mt-3 rounded-lg border px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[13px] font-semibold">加载方式</span>
+        <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
+          {[false, true].map((v) => (
+            <button key={String(v)} disabled={!!busy || v === on || (v && !d.ok)} onClick={() => set(v)}
+              className={cn("h-7 rounded-md px-2.5 text-xs font-medium transition-all disabled:cursor-default",
+                v === on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground enabled:hover:bg-background/50 disabled:opacity-50")}>
+              {v ? "按需" : "常驻"}
+            </button>
           ))}
-        </ul>
-      ) : <div className="px-4 py-5 text-center text-xs text-muted-foreground">会话记录里还没有项目用过它</div>}
+        </div>
+        {busy === `mode:${p.key}` && <Spinner />}
+        <span className="flex-1" />
+        {!!p.cost && <span className="text-xs text-muted-foreground">{on ? "每次会话省下" : "每次会话常驻"}约 {tokens(p.cost)} token</span>}
+      </div>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+        {on ? "没装进 app，列在技能库里。模型觉得用得上时，先打开技能库，再读它的 SKILL.md。"
+          : d.ok ? "装在 app 里，每次会话都把技能的名字和说明放进提示。不常用的可以改成按需：从两边卸下，收进技能库，用到时再读。"
+            : `不能改成按需：${d.why}。`}
+      </p>
+      {!!d.lost?.length && (
+        <p className="mt-1.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+          按需时{d.lost.join("、")}不会生效，它们要装进 app 才能用。{on ? "" : "如果只用得上它的技能，再改成按需。"}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* 按需的插件或技能：没有各 app 的卡片，换成技能库这一张 */
+function LibraryCard({ p, lib }: { p: Plugin; lib: Library }) {
+  const bad = lib.apps.filter((a) => a.problems.length || a.verify?.ok === false);
+  return (
+    <section className="overflow-hidden rounded-xl border bg-card">
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-4">
+        <h3 className="text-[15px] font-semibold">技能库</h3>
+        {lib.apps.map((a) => <AppChip key={a.app} app={a.app} />)}
+        {bad.length > 0 && <Tag tone="red">要修复</Tag>}
+      </div>
+      <p className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground">
+        {lib.apps.map((a) => APP_NAME[a.app]).join(" 和 ")} 每次会话只加载技能库的一句说明（约 {tokens(lib.cost)} token），里面列着它的名字和用途。模型用到时打开 <code className="break-all font-mono">{lib.folder}</code> 里的目录，再读它的 SKILL.md。
+        {bad.length > 0 && "技能库现在有问题，到首页点修复。"}
+      </p>
+      <Projects list={p.projects ?? []} className="bg-muted/50" />
     </section>
   );
 }
@@ -163,19 +249,32 @@ function MissingCard({ p, app, onInstall }: { p: Plugin; app: AppKey; onInstall:
   );
 }
 
-export function PluginView({ p, busy, run, confirm, onAdopt, onInstall }: {
-  p: Plugin; busy: string | null; run: Run; confirm: ConfirmFn; onAdopt: (repo: string) => void; onInstall: (apps: AppKey[]) => void;
+export function PluginView({ p, lib, busy, run, confirm, onAdopt, onInstall }: {
+  p: Plugin; lib: Library; busy: string | null; run: Run; confirm: ConfirmFn; onAdopt: (repo: string) => void; onInstall: (apps: AppKey[]) => void;
 }) {
   const version = p.version || p.apps[0]?.version || "";
+  // 插件中心管的 skill，链接被删了也要显示出来，好看到问题
+  const cards = p.apps.filter((a) => a.installed || (isSkill(p) && a.state === "missing"));
+  const shown = new Set(cards.map((a) => a.app));
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-xl border bg-card px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
+          {isSkill(p) && <Tag tone="sky">技能</Tag>}
           {version && <Tag tone="slate" mono>{version}</Tag>}
+          {p.on_demand && <Tag tone="sky">按需</Tag>}
           {p.apps.filter((a) => a.installed).map((a) => <AppChip key={a.app + a.id} app={a.app} />)}
-          {!p.apps.some((a) => a.installed) && <span className="text-xs text-muted-foreground">哪边都没装</span>}
+          {!p.apps.some((a) => a.installed) && <span className="text-xs text-muted-foreground">{p.on_demand ? "在技能库里，用到时再读" : "哪边都没装"}</span>}
         </div>
         {p.description && <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{p.description}</p>}
+        {isSkill(p) && (
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            {p.skill?.ours ? <>统一存放在 <code className="break-all font-mono">{p.skill.folder}</code>，{p.on_demand ? "技能库指向这里" : "装了它的 app 都链接到这里"}。改这一份，两边都生效。</>
+              : p.official ? "Codex 自带的技能，由 Codex 自己管。"
+                : "独立的技能，还不归插件中心管。点右上角的安装，把它装到另一个 app：它会先挪进 ~/.yuwanplugins/skills 统一存放，两边都链接过去。"}
+          </p>
+        )}
+        <LoadMode p={p} busy={busy} run={run} />
         <LocalNotice p={p} busy={busy} run={run} confirm={confirm} />
         {p.managed?.error && !p.managed.modified.length && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-300">上次出错：{p.managed.error}</p>}
         {!p.managed && p.repo && !p.official && (
@@ -184,8 +283,9 @@ export function PluginView({ p, busy, run, confirm, onAdopt, onInstall }: {
           </p>
         )}
       </div>
-      {p.apps.filter((a) => a.installed).map((a) => <AppCard key={a.app + a.id} p={p} a={a} busy={busy} run={run} confirm={confirm} />)}
-      {APPS.filter((x) => p.install[x]).map((x) => <MissingCard key={x} p={p} app={x} onInstall={onInstall} />)}
+      {p.on_demand && <LibraryCard p={p} lib={lib} />}
+      {cards.map((a) => <AppCard key={a.app + a.id} p={p} a={a} busy={busy} run={run} confirm={confirm} />)}
+      {APPS.filter((x) => p.install[x] && !shown.has(x)).map((x) => <MissingCard key={x} p={p} app={x} onInstall={onInstall} />)}
     </div>
   );
 }

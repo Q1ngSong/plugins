@@ -18,3 +18,6 @@ assets/figures.py
 AGENTS.md
 CLAUDE.md
 .claude/
+
+# Python 运行测试时可能留下的缓存
+__pycache__/

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="330" viewBox="0 0 840 330" role="img" aria-labelledby="title desc">
+<title id="title">独立的技能：装到另一边</title>
+<desc id="desc">只装在 Codex 里的技能 autoresearch，装到 Claude Code 时先挪进 ~/.yuwanplugins/skills 统一存放，原来的位置换成链接，Claude Code 那边也放一个链接。</desc>
+<style>svg{--bg:#faf8f5;--blue:#3b82f6;--cc:#c2552f;--ccbg:#fbe9e1;--ccln:#f0c4b2;--cx:#0b8a6a;--cxbg:#dff4ec;--cxln:#aee0cd;--edge:#e7e3dc;--ink:#18181b;--ink2:#52525b;--ink3:#a1a1aa;--line:#e4e4e7;--line2:#d4d4d8;--panel:#ffffff;--sunk:#f4f4f5}@media (prefers-color-scheme:dark){svg{--bg:#18181a;--cc:#f0936c;--ccbg:#2e1a12;--ccln:#5a3322;--cx:#4fd1a8;--cxbg:#0f2720;--cxln:#1f4b3d;--edge:#2e2e33;--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#71717a;--line:#3b3b41;--line2:#4d4d55;--panel:#232326;--sunk:#2d2d31}}text{font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif;font-size:13px;fill:var(--ink)}.m{font-family:Consolas,'SFMono-Regular',Menlo,'Cascadia Mono','Microsoft YaHei','PingFang SC',monospace;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0}.b{font-weight:600}.ic{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.nf{fill:none}.g-mg0{stop-color:var(--blue);stop-opacity:.09}.g-mg1{stop-color:var(--blue);stop-opacity:0}.g-fd0{stop-color:var(--panel);stop-opacity:0}.g-fd1{stop-color:var(--panel);stop-opacity:1}.f-bg{fill:var(--bg)}.f-cc{fill:var(--cc)}.f-ccbg{fill:var(--ccbg)}.f-cx{fill:var(--cx)}.f-cxbg{fill:var(--cxbg)}.f-ink2{fill:var(--ink2)}.f-ink3{fill:var(--ink3)}.f-panel{fill:var(--panel)}.f-sunk{fill:var(--sunk)}.s-cc{stroke:var(--cc)}.s-ccln{stroke:var(--ccln)}.s-cx{stroke:var(--cx)}.s-cxln{stroke:var(--cxln)}.s-edge{stroke:var(--edge)}.s-ink2{stroke:var(--ink2)}.s-ink3{stroke:var(--ink3)}.s-line{stroke:var(--line)}.s-line2{stroke:var(--line2)}</style>
+<rect x="0.5" y="0.5" width="839" height="329" rx="16" class="f-bg s-edge"/>
+<rect x="24" y="24" width="380" height="232" rx="12" class="f-panel s-line"/>
+<rect x="436" y="24" width="380" height="232" rx="12" class="f-panel s-line"/>
+<text x="44" y="56" class="b" style="font-size:15px">装之前</text>
+<text x="104" y="56" class="f-ink3" style="font-size:12px">只在 Codex 里</text>
+<rect x="44.5" y="76.5" width="51.66" height="17" rx="8.5" class="f-cxbg s-cxln"/><circle cx="53" cy="85" r="3" class="f-cx"/><text x="60" y="89" class="f-cx b" style="font-size:11px">Codex</text>
+<rect x="44" y="102" width="340" height="62" rx="8" class="f-sunk"/>
+<g transform="translate(56 112) scale(0.75)"><path class="ic s-ink2" d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.3a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/></g>
+<text x="82" y="126" class="m" style="font-size:12.5px">~/.codex/skills/autoresearch/</text>
+<text x="82" y="148" class="f-ink3" style="font-size:11.5px">一个真实的文件夹，里面是 SKILL.md</text>
+<rect x="44.5" y="180.5" width="82.89" height="17" rx="8.5" class="f-ccbg s-ccln"/><circle cx="53" cy="189" r="3" class="f-cc"/><text x="60" y="193" class="f-cc b" style="font-size:11px">Claude Code</text>
+<rect x="44" y="206" width="340" height="36" rx="8" class="nf s-line2" stroke-dasharray="4 3"/>
+<text x="60" y="229" class="f-ink3" style="font-size:12px">~/.claude/skills/ 里没有它</text>
+<text x="456" y="56" class="b" style="font-size:15px">装到 Claude Code 之后</text>
+<text x="628" y="56" class="f-ink3" style="font-size:12px">只存一份，两边都是链接</text>
+<path d="M514 84a8 8 0 0 1 8-8h40a6 6 0 0 1 4.6 2.2l5.4 6.6a6 6 0 0 0 4.6 2.2H738a8 8 0 0 1 8 8V134a8 8 0 0 1-8 8H522a8 8 0 0 1-8-8z" class="f-panel s-line2" stroke-width="1.2"/>
+<text x="530" y="110" class="m b" style="font-size:12px">~/.yuwanplugins/skills/</text>
+<text x="530" y="129" class="f-ink2 m" style="font-size:12px">autoresearch/</text>
+<rect x="452" y="184" width="168" height="54" rx="8" class="f-ccbg s-ccln"/>
+<text x="466" y="205" class="f-cc b" style="font-size:12.5px">Claude Code</text>
+<text x="466" y="225" class="f-ink2 m" style="font-size:11px">~/.claude/skills/</text>
+<rect x="632" y="184" width="168" height="54" rx="8" class="f-cxbg s-cxln"/>
+<text x="646" y="205" class="f-cx b" style="font-size:12.5px">Codex</text>
+<text x="646" y="225" class="f-ink2 m" style="font-size:11px">~/.codex/skills/</text>
+<line x1="536" y1="182" x2="573.44" y2="149.9" class="s-cc" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M578 146L574.96 153.21L570.41 147.9Z" class="f-cc"/>
+<text x="532" y="166" class="f-cc" style="font-size:11.5px" text-anchor="end">链接</text>
+<line x1="716" y1="182" x2="686.12" y2="150.36" class="s-cx" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M682 146L689.35 148.69L684.26 153.49Z" class="f-cx"/>
+<text x="722" y="166" class="f-cx" style="font-size:11.5px">链接</text>
+<line x1="410" y1="140" x2="424" y2="140" class="s-ink3" stroke-width="1.5"/><path d="M430 140L423 143.5L423 136.5Z" class="f-ink3"/>
+<text x="24" y="286" class="f-ink2" style="font-size:12.5px">两边都没有单个技能的开关：放进去就生效，删掉链接就等于关掉。真实的文件夹删的时候挪进备份，不直接删。</text>
+<text x="24" y="308" class="f-ink2" style="font-size:12.5px">真实检查：Codex 看模型提示里有没有它、读的是不是这一份；Claude Code 没有列出技能的命令，只核对链接和 SKILL.md。</text>
+</svg>

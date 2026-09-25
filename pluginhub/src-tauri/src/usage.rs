@@ -13,12 +13,24 @@ use crate::util::*;
 static CWD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""cwd"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap());
 /// 会话记录里的路径分隔符：/、\ 或转义过的 \\
 const SEP: &str = r"(?:\\\\|/)+";
-/// Claude Code 调用插件的 skill、子代理和斜杠命令时，名字都是「插件名:xxx」
-static CLAUDE_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""(?:skill|subagent_type)"\s*:\s*"([\w.-]+):|<command-name>/?([\w.-]+):"#).unwrap());
+/// Claude Code 调用 skill、插件的子代理和斜杠命令时会写下名字：插件里的是「插件名:xxx」，独立的 skill 没有冒号
+static CLAUDE_USE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#""skill"\s*:\s*"([\w.:-]+)"|"subagent_type"\s*:\s*"([\w.-]+):|<command-name>/?([\w.:-]+)</command-name>"#).unwrap()
+});
+/// Claude Code 用 Read 这些工具读 ~/.yuwanplugins 里的文件（按需的技能就是这么读的）：skills/<名字>/ 是独立的技能，别的是插件文件夹。
+/// 只认工具参数里的 file_path，读出来的内容里出现的路径不算
+static CLAUDE_READ: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r#""file_path"\s*:\s*"[^"]*?\.yuwanplugins{SEP}(skills{SEP})?([\w.-]+){SEP}"#)).unwrap());
 /// Codex 用插件时会去读它缓存里的文件：.codex/plugins/cache/<插件源>/<插件>/...
 static CODEX_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r"plugins{SEP}cache{SEP}([\w.-]+){SEP}([\w.-]+){SEP}")).unwrap());
 /// 受管插件的缓存链接回 ~/.yuwanplugins，Codex 读的路径就成了 .yuwanplugins/<插件>/...
 static YUWAN_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r"\.yuwanplugins{SEP}([\w.-]+){SEP}")).unwrap());
+/// Codex 用独立的 skill 时会去读它的文件：.codex/skills/<名字>/、.codex/skills/.system/<名字>/、.yuwanplugins/skills/<名字>/
+static CODEX_SKILL_USE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"(?:\.codex{SEP}skills(?:{SEP}\.system)?|\.yuwanplugins{SEP}skills){SEP}([\w-][\w.-]*){SEP}")).unwrap()
+});
+/// 统计规则变了就改这个数，旧的扫描缓存会作废重扫
+const SCAN_VERSION: u64 = 3;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct ProjRow {
@@ -92,29 +104,45 @@ pub fn worktree_parent(path: &Path) -> Option<String> {
     Some(display(p.parent()?))
 }
 
-/// 一个会话文件里调用了哪些插件、各几次。
+/// 一个会话文件里调用了哪些插件和独立的 skill、各几次。
 ///
-/// Claude Code 按插件名记；Codex 按「插件@插件源」记，读的是 ~/.yuwanplugins 里的就记成「yuwan:<文件夹>」。
+/// Claude Code 按插件名记；Codex 按「插件@插件源」记；两边读的是 ~/.yuwanplugins 里的文件，就记成「yuwan:<文件夹>」。
+/// 独立的 skill 两边都记成「skill:<名字>」。
 pub fn scan_session(path: &Path, app: &str) -> std::io::Result<BTreeMap<String, u64>> {
     let data = fs::read(path)?;
     let mut hits: BTreeMap<String, u64> = BTreeMap::new();
+    let text = |g: regex::bytes::Match| String::from_utf8_lossy(g.as_bytes()).to_string();
     if app == "claude" {
         for m in CLAUDE_USE.captures_iter(&data) {
-            let name = m.get(1).or_else(|| m.get(2)).map(|g| String::from_utf8_lossy(g.as_bytes()).to_string()).unwrap_or_default();
-            *hits.entry(name).or_insert(0) += 1;
+            let key = if let Some(v) = m.get(1).or_else(|| m.get(3)).map(text) {
+                match v.split_once(':') {
+                    Some((plugin, _)) => plugin.to_string(),
+                    None => format!("skill:{v}"), // 斜杠命令里的内置命令也会记进来，但没有同名的 skill 就不会显示
+                }
+            } else {
+                m.get(2).map(text).unwrap_or_default()
+            };
+            *hits.entry(key).or_insert(0) += 1;
+        }
+        for m in CLAUDE_READ.captures_iter(&data) {
+            let what = text(m.get(2).expect("group 2 always matches"));
+            *hits.entry(if m.get(1).is_some() { format!("skill:{what}") } else { format!("yuwan:{what}") }).or_insert(0) += 1;
         }
         return Ok(hits);
     }
-    for (pattern, yuwan) in [(&*CODEX_USE, false), (&*YUWAN_USE, true)] {
+    for (pattern, kind) in [(&*CODEX_USE, 0), (&*YUWAN_USE, 1), (&*CODEX_SKILL_USE, 2)] {
         for m in pattern.captures_iter(&data) {
+            if kind == 1 && &m[1] == b"skills" {
+                continue; // .yuwanplugins/skills/ 下是独立的 skill，由下一条规则记
+            }
             let start = data[..m.get(0).unwrap().start()].iter().rposition(|&b| b == b'\n').map(|i| i + 1).unwrap_or(0);
             let head = &data[start..(start + 250).min(data.len())];
-            // 只算工具调用；提示词里的插件清单每个会话都有，不算用过
+            // 只算工具调用；提示词里的插件和 skill 清单每个会话都有，不算用过
             if contains(head, br#""type":"custom_tool_call""#) || contains(head, br#""type":"function_call""#) {
-                let key = if yuwan {
-                    format!("yuwan:{}", String::from_utf8_lossy(&m[1]))
-                } else {
-                    format!("{}@{}", String::from_utf8_lossy(&m[2]), String::from_utf8_lossy(&m[1]))
+                let key = match kind {
+                    0 => format!("{}@{}", String::from_utf8_lossy(&m[2]), String::from_utf8_lossy(&m[1])),
+                    1 => format!("yuwan:{}", String::from_utf8_lossy(&m[1])),
+                    _ => format!("skill:{}", String::from_utf8_lossy(&m[1])),
                 };
                 *hits.entry(key).or_insert(0) += 1;
             }
@@ -155,7 +183,12 @@ fn walk_files(root: &Path, keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
 
 /// 从两边的会话记录统计：每个插件被哪些项目调用过。结果按文件缓存在 usage.json，文件没变就不重读。
 pub fn scan_usage() -> Usage {
-    let cached = read_obj(&USAGE_PATH).get("files").and_then(Value::as_object).cloned().unwrap_or_default();
+    let cache = read_obj(&USAGE_PATH);
+    let cached = if cache.get("version").and_then(Value::as_u64) == Some(SCAN_VERSION) {
+        cache.get("files").and_then(Value::as_object).cloned().unwrap_or_default()
+    } else {
+        serde_json::Map::new() // 统计规则变过，旧缓存作废
+    };
     let mut sources: Vec<(&str, PathBuf)> = walk_files(&CLAUDE_HOME.join("projects"), |n| n.ends_with(".jsonl")).into_iter().map(|p| ("claude", p)).collect();
     for folder in [CODEX_HOME.join("sessions"), CODEX_HOME.join("archived_sessions")] {
         sources.extend(walk_files(&folder, |n| n.starts_with("rollout-") && n.ends_with(".jsonl")).into_iter().map(|p| ("codex", p)));
@@ -183,7 +216,7 @@ pub fn scan_usage() -> Usage {
         files.insert(key, rec);
     }
     if files != cached {
-        let _ = write_json(&USAGE_PATH, &json!({"files": files}));
+        let _ = write_json(&USAGE_PATH, &json!({"version": SCAN_VERSION, "files": files}));
     }
     let mut usage = Usage::default();
     for rec in files.values() {

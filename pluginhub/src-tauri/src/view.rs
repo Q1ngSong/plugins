@@ -10,6 +10,7 @@ use crate::bail;
 use crate::claude::{describe_claude_source, split_id, ClaudeCode};
 use crate::codex::Codex;
 use crate::gitx::*;
+use crate::library;
 use crate::schedule::{auto_status, launcher_line};
 use crate::store::*;
 use crate::usage::{merge_projects, project_rows, scan_usage, ProjRow, Usage};
@@ -24,7 +25,7 @@ pub fn plugin_view(p: &PluginCfg, st: &mut State, claude: &ClaudeCode, codex: &C
         "branch": p.branch, "checked_at": m.get("checked_at").cloned().unwrap_or(Value::Null),
         "updated_at": m.get("updated_at").cloned().unwrap_or(Value::Null),
         "error": m.get("error").cloned().unwrap_or(Value::Null), "cloned": false, "needs_update": true,
-        "claude": [], "codex": null, "locked": locked, "modified": [],
+        "claude": [], "codex": null, "locked": locked, "modified": [], "on_demand": p.on_demand,
     });
     let d = repo_dir(p);
     if !d.join(".git").exists() {
@@ -46,13 +47,14 @@ pub fn plugin_view(p: &PluginCfg, st: &mut State, claude: &ClaudeCode, codex: &C
     obj.insert("branches".into(), json!(remote_branches(&d)));
     obj.insert("behind".into(), Value::Bool(behind));
     obj.insert("modified".into(), json!(local_changes(&d, &p.branch, synced.as_deref())));
+    // 按需的没装进 app，只看有没有新版本
     let mut targets: Vec<Value> = Vec::new();
-    if p.target("claude") {
+    if p.target("claude") && !p.on_demand {
         let list: Vec<Value> = man.claude_plugins.iter().map(|c| claude.status(&c.name, &d.join(&c.path), head_sha.as_deref(), latest.as_deref())).collect();
         targets.extend(list.iter().cloned());
         obj.insert("claude".into(), Value::Array(list));
     }
-    if p.target("codex") {
+    if p.target("codex") && !p.on_demand {
         if let Some(name) = &man.codex_name {
             let s = codex.status(name, &d, head_sha.as_deref(), latest.as_deref());
             targets.push(s.clone());
@@ -74,12 +76,13 @@ fn merge_into(a: Map<String, Value>, b: Option<&Value>) -> Value {
     Value::Object(out)
 }
 
-/// 一个 Claude Code 插件在本机的情况，以及用过它的项目
-pub fn claude_app(claude: &ClaudeCode, pid: &str, usage: &Usage, status: Option<&Value>) -> Value {
+/// 一个 Claude Code 插件在本机的情况，以及用过它的项目。folder_id 是它在 ~/.yuwanplugins 里的文件夹名。
+pub fn claude_app(claude: &ClaudeCode, pid: &str, usage: &Usage, status: Option<&Value>, folder_id: &str) -> Value {
     let (name, mkt) = split_id(pid);
     let entries = ClaudeCode::installed().get(pid).and_then(Value::as_array).cloned().unwrap_or_default();
     let e = claude.entry(pid).unwrap_or(Value::Null);
-    let mut projects = merge_projects(&[usage.get("claude", name)]);
+    let yuwan = format!("yuwan:{folder_id}");
+    let mut projects = merge_projects(&[usage.get("claude", name), if folder_id.is_empty() { None } else { usage.get("claude", &yuwan) }]);
     for x in &entries {
         // 装在项目范围的，那个项目自然算在用
         let pp = gs(x, "projectPath");
@@ -172,12 +175,18 @@ pub fn skills_rel(folder: &Path, app: &str) -> Option<String> {
     None
 }
 
-/// 插件里每个 skill 的名字：SKILL.md 开头写的 name，没写就用文件夹名
-pub fn skill_names(folder: &Path, app: &str) -> Vec<String> {
+/// 插件里每个 skill 的文件夹
+pub fn skill_dirs(folder: &Path, app: &str) -> Vec<PathBuf> {
     let Some(rel) = skills_rel(folder, app) else { return Vec::new() };
     let dir = folder.join(rel.trim_start_matches("./").trim_end_matches('/'));
     let mut dirs: Vec<PathBuf> = fs::read_dir(&dir).map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.join("SKILL.md").is_file()).collect()).unwrap_or_default();
     dirs.sort();
+    dirs
+}
+
+/// 插件里每个 skill 的名字：SKILL.md 开头写的 name，没写就用文件夹名
+pub fn skill_names(folder: &Path, app: &str) -> Vec<String> {
+    let dirs = skill_dirs(folder, app);
     let fm = Regex::new(r"(?ms)^---\s*$(.*?)^---\s*$").unwrap();
     let name_re = Regex::new(r#"(?m)^name:\s*["']?(.+?)["']?\s*$"#).unwrap();
     dirs.iter()
@@ -326,15 +335,14 @@ fn row_index(rows: &mut Vec<Value>, name: &str) -> usize {
 }
 
 /// 本机所有插件，同名的合成一行；受管的带上来源信息
-pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex) -> Vec<Value> {
-    let usage = scan_usage();
+pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex, usage: &Usage) -> Vec<Value> {
     let mut rows: Vec<Value> = Vec::new();
     let mut owned: HashSet<(String, String)> = HashSet::new();
     for v in managed {
         let man = v.get("manifest").cloned().unwrap_or(Value::Null);
-        let mut apps: Vec<Value> = ga(v, "claude").iter().map(|t| claude_app(claude, gs(t, "id"), &usage, Some(t))).collect();
+        let mut apps: Vec<Value> = ga(v, "claude").iter().map(|t| claude_app(claude, gs(t, "id"), usage, Some(t), gs(v, "id"))).collect();
         if let Some(c) = v.get("codex").filter(|c| c.is_object()) {
-            apps.push(codex_app(codex, gs(c, "id"), &usage, Some(c), gs(v, "id")));
+            apps.push(codex_app(codex, gs(c, "id"), usage, Some(c), gs(v, "id")));
         }
         owned.extend(apps.iter().map(|a| (gs(a, "app").to_string(), gs(a, "id").to_string())));
         let mut supports = Vec::new();
@@ -355,7 +363,7 @@ pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex) ->
             continue;
         }
         let i = row_index(&mut rows, split_id(&pid).0);
-        let a = claude_app(claude, &pid, &usage, None);
+        let a = claude_app(claude, &pid, usage, None, "");
         let path = gs(&a, "path").to_string();
         let r = rows[i].as_object_mut().expect("object");
         if gs(&Value::Object(r.clone()), "repo").is_empty() {
@@ -376,7 +384,7 @@ pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex) ->
             continue;
         }
         let i = row_index(&mut rows, split_id(&cid).0);
-        let a = codex_app(codex, &cid, &usage, None, "");
+        let a = codex_app(codex, &cid, usage, None, "");
         rows[i]["apps"].as_array_mut().expect("array").push(a);
     }
     let official_re = Regex::new(r"^(openai-|claude-plugins-official$)").unwrap();
@@ -393,6 +401,7 @@ pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex) ->
             String::new()
         };
         r["link"] = Value::from(link);
+        r["kind"] = Value::from("plugin");
         // 两边自带的官方插件由 app 自己管，页面上不给删除和同步
         let apps = r["apps"].as_array_mut().expect("array");
         for a in apps.iter_mut() {
@@ -418,6 +427,31 @@ pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex) ->
         let installable: Vec<String> = install.iter().filter(|(_, o)| o.get("how").map(|h| !h.is_null()).unwrap_or(false)).map(|(k, _)| k.clone()).collect();
         r["install"] = Value::Object(install);
         r["installable"] = json!(installable);
+        // 常驻时每次会话占多少，能不能改成按需
+        let managed_id = r.get("managed").filter(|m| m.is_object()).map(|m| gs(m, "id").to_string());
+        let on_demand = r.get("managed").is_some_and(|m| gb(m, "on_demand"));
+        let (leaves, lost) = match &managed_id {
+            Some(id) => (library::repo_leaves(&PLUGINS_DIR.join(id)), library::lost_on_demand(&PLUGINS_DIR.join(id))),
+            None => {
+                let a = ga(r, "apps").iter().find(|a| gb(a, "installed") && !gs(a, "path").is_empty());
+                (a.map(|a| library::leaves(skill_dirs(Path::new(gs(a, "path")), gs(a, "app")))).unwrap_or_default(), Vec::new())
+            }
+        };
+        r["on_demand"] = Value::Bool(on_demand);
+        r["cost"] = Value::from(library::cost(&leaves));
+        r["demand"] = match &managed_id {
+            None if all_official => json!({"ok": false, "why": "app 自带的插件，由 app 自己管"}),
+            None if gs(r, "repo").is_empty() => json!({"ok": false, "why": "不是从 git 仓库装的，插件中心管不了它"}),
+            None => json!({"ok": false, "why": "先点安装，交给插件中心管理，才能改成按需"}),
+            Some(_) if leaves.is_empty() => json!({"ok": false, "why": "它没有技能，按需加载不了"}),
+            Some(_) => json!({"ok": true, "lost": lost}),
+        };
+        if let (true, Some(id)) = (on_demand, &managed_id) {
+            // 按需的从技能库读，要装进 app 先改回常驻
+            r["install"] = json!({});
+            r["installable"] = json!([]);
+            r["projects"] = json!(project_rows(&library::plugin_projects(id, usage)));
+        }
     }
     rows.sort_by_key(|r| (r.get("managed").map(Value::is_null).unwrap_or(true), gs(r, "name").to_lowercase()));
     rows
@@ -429,7 +463,10 @@ pub fn build_state() -> R<Value> {
     let (claude, codex) = (ClaudeCode::new(), Codex::new());
     let views: Vec<Value> = cfg.plugins.iter().map(|p| plugin_view(p, &mut st, &claude, &codex)).collect();
     save_state(&st)?;
-    let mut plugins = machine_plugins(&views, &claude, &codex);
+    let usage = scan_usage();
+    // 插件和独立的 skill 放在同一张表里，页面按 kind 筛选
+    let mut plugins = machine_plugins(&views, &claude, &codex, &usage);
+    plugins.extend(crate::skills::skill_rows(&usage));
     let checks = st.get("verify").cloned().unwrap_or(Value::Null);
     let repairs = st.get("repairs").cloned().unwrap_or(Value::Null);
     for r in plugins.iter_mut() {
@@ -456,6 +493,7 @@ pub fn build_state() -> R<Value> {
             "codex": codex.exe.as_deref().map(display).unwrap_or_default(),
             "git": which_git().as_deref().map(display).unwrap_or_default(),
         },
+        "library": library::status(&plugins, &st),
         "plugins": plugins,
         "log": tail_log(80),
     }))

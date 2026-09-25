@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { IconButton, Spinner } from "@/components/common/bits";
 import { PluginActions } from "@/components/common/PluginActions";
 import { useConfirm } from "@/components/common/useConfirm";
-import { Filter, HomeView } from "@/components/views/HomeView";
+import { Filter, HomeView, KindFilter } from "@/components/views/HomeView";
 import { PluginView } from "@/components/views/PluginView";
 import { InstallDialog } from "@/components/views/InstallDialog";
 import { AddView } from "@/components/views/AddView";
@@ -18,9 +18,18 @@ import { cn } from "@/lib/utils";
 
 type View = { name: "home" } | { name: "plugin"; key: string } | { name: "add"; repo?: string } | { name: "settings" };
 
+const KINDS: [KindFilter, string, string][] = [
+  ["all", "全部", "插件和技能都显示"],
+  ["plugin", "插件", "只看插件"],
+  ["skill", "技能", "只看独立的技能：不属于任何插件、单独放在 skills 文件夹里的 skill"],
+];
+
 export default function App() {
   const [filter, setFilter] = useState<Filter>(() => {
     try { return (localStorage.getItem("hub.filter") as Filter) || "all"; } catch { return "all"; }
+  });
+  const [kind, setKind] = useState<KindFilter>(() => {
+    try { return (localStorage.getItem("hub.kind") as KindFilter) || "all"; } catch { return "all"; }
   });
   const [view, setView] = useState<View>({ name: "home" });
   const [installing, setInstalling] = useState<{ key: string; apps: AppKey[] } | null>(null);
@@ -29,6 +38,7 @@ export default function App() {
   const { busy, run } = useRun();
 
   useEffect(() => { try { localStorage.setItem("hub.filter", filter); } catch { /* 存不了就算了 */ } }, [filter]);
+  useEffect(() => { try { localStorage.setItem("hub.kind", kind); } catch { /* 存不了就算了 */ } }, [kind]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || view.name === "home" || document.querySelector("[role=dialog]")) return;
@@ -51,19 +61,27 @@ export default function App() {
       <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-6 backdrop-blur-md">
         {current.name === "home" ? (
           <>
-            <div className="flex items-center gap-2">
-              <span className="whitespace-nowrap text-xl font-bold tracking-tight text-blue-500">插件中心</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="hidden whitespace-nowrap text-xl font-bold tracking-tight text-blue-500 md:inline">插件中心</span>
               <Button variant="ghost" size="icon" className="h-8 w-8" title="设置" onClick={() => setView({ name: "settings" })}><Settings className="h-5 w-5" /></Button>
+              <div className="ml-1 inline-flex gap-1 rounded-xl bg-muted p-1">
+                {KINDS.map(([k, label, tip]) => (
+                  <button key={k} onClick={() => setKind(k)} title={tip}
+                    className={cn("flex h-8 items-center whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-all", k === kind ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:bg-background/50")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="inline-flex gap-1 rounded-xl bg-muted p-1">
                 {(["all", ...APPS] as Filter[]).map((k) => {
                   const found = k === "all" || !!state.tools[k];
                   return (
-                    <button key={k} onClick={() => setFilter(k)} title={k === "all" ? "所有插件" : found ? `只看装在 ${APP_NAME[k]} 里的` : `没找到 ${APP_NAME[k]}`}
+                    <button key={k} onClick={() => setFilter(k)} title={k === "all" ? "两个 app 里的都显示" : found ? `只看装在 ${APP_NAME[k]} 里的` : `没找到 ${APP_NAME[k]}`}
                       className={cn("flex h-8 items-center gap-2 whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-all", k === filter ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:bg-background/50")}>
                       {k !== "all" && <span className={cn("h-[7px] w-[7px] rounded-full", !found ? "bg-gray-300" : k === "claude" ? "bg-[#c2552f]" : "bg-[#0b8a6a]")} />}
-                      {k === "all" ? "全部" : APP_NAME[k]}
+                      {k === "all" ? "所有 app" : APP_NAME[k]}
                     </button>
                   );
                 })}
@@ -109,9 +127,9 @@ export default function App() {
 
       <main className={cn("mx-auto px-6 pb-20 pt-6", current.name === "home" ? "max-w-[1200px]" : "max-w-[860px]")}>
         <div key={current.name + (current.name === "plugin" ? current.key : "")} className={current.name === "home" ? "animate-fade-in" : "animate-slide-in"}>
-            {current.name === "home" && <HomeView state={state} filter={filter} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={() => setView({ name: "add" })}
+            {current.name === "home" && <HomeView state={state} filter={filter} kind={kind} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={() => setView({ name: "add" })}
               onInstall={(key) => { const p = state.plugins.find((x) => x.key === key); setView({ name: "plugin", key }); if (p) setInstalling({ key, apps: p.installable }); }} />}
-            {current.name === "plugin" && plugin && <PluginView p={plugin} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
+            {current.name === "plugin" && plugin && <PluginView p={plugin} lib={state.library} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
               onInstall={(apps) => setInstalling({ key: plugin.key, apps })} />}
             {current.name === "add" && <AddView initialRepo={current.repo} busy={busy} run={run} onDone={(key) => setView({ name: "plugin", key })} />}
             {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} />}

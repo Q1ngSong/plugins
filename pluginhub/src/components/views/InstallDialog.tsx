@@ -12,6 +12,7 @@ export function InstallDialog({ p, initial, onClose, busy, run }: { p: Plugin; i
   const [apps, setApps] = useState<AppKey[]>([]);
   useEffect(() => { setApps(initial.filter((x) => p.installable.includes(x))); }, [initial, p.installable]);
   const ported = apps.filter((x) => p.install[x]?.how === "port");
+  const moved = apps.filter((x) => p.install[x]?.how === "move");
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -41,6 +42,12 @@ export function InstallDialog({ p, initial, onClose, busy, run }: { p: Plugin; i
               </button>
             );
           })}
+          {moved.length > 0 && (
+            <p className="rounded-lg bg-sky-500/10 px-3 py-2 text-xs leading-relaxed text-sky-900 dark:text-sky-200">
+              {APP_NAME[p.install[moved[0]]!.from!]} 里现有的那份会挪进 ~/.yuwanplugins/skills 统一存放，原来的位置换成链接。
+              之后两个 app 读的都是这一份，改一处两边生效。
+            </p>
+          )}
           {ported.length > 0 && (
             <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
               移植只带 skill，钩子、MCP 服务和 App 集成两边格式不同，不会带过去。为 {ported.map((x) => APP_NAME[p.install[x]!.from!]).join("、")} 写的 skill 可能用到它专有的功能，在 {ported.map((x) => APP_NAME[x]).join("、")} 里不一定都能用。源插件更新后点同步会重新复制。

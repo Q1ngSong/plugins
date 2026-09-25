@@ -28,10 +28,15 @@ export interface AppEntry {
   problems?: string[];
   /** 后台检查最近一次发现问题并修复的记录 */
   repair?: { at: string; what: string[]; ok: boolean } | null;
+  /** 独立的 skill：app 那边的文件夹实际指向哪里（linked 表示它是链接） */
+  target?: string | null;
 }
 
-/** 还没装的 app 能怎么装：native 直接装；adopt 先交给插件中心管理；port 移植 skill；null 装不了（why 是原因） */
-export interface InstallOption { how: "native" | "adopt" | "port" | null; from?: AppKey; why?: string }
+/**
+ * 还没装的 app 能怎么装：native 直接装；adopt 先交给插件中心管理；port 移植 skill；
+ * 独立的 skill 用 link（链接到统一存放的那份）和 move（先挪进统一存放的地方）；null 装不了（why 是原因）
+ */
+export interface InstallOption { how: "native" | "adopt" | "port" | "link" | "move" | null; from?: AppKey; why?: string }
 
 export interface Commit { sha: string; short: string; subject: string; date: string }
 
@@ -53,8 +58,17 @@ export interface Managed {
   remote?: Commit | null;
 }
 
+export type Kind = "plugin" | "skill";
+
+/** 能不能改成按需；lost 是按需时不会生效的东西（钩子、命令等） */
+export interface Demand { ok: boolean; why?: string; lost?: string[] }
+
 export interface Plugin {
   key: string;
+  /** 插件，还是独立的 skill（不属于任何插件、单独放在 app 的 skills 文件夹里） */
+  kind: Kind;
+  /** 独立的 skill 才有：ours 表示已经统一存放在 ~/.yuwanplugins/skills */
+  skill?: { ours: boolean; folder: string | null; dir: string } | null;
   name: string;
   version: string;
   description: string;
@@ -66,12 +80,29 @@ export interface Plugin {
   install: Partial<Record<AppKey, InstallOption>>;
   installable: AppKey[];
   apps: AppEntry[];
+  /** 按需：没装进 app，列在技能库里，用到时模型再读 */
+  on_demand?: boolean;
+  /** 装在 app 里时，每次会话常驻的开销（粗估 token） */
+  cost?: number;
+  demand?: Demand;
+  /** 按需的才有：用过它的项目（两个 app 合起来） */
+  projects?: Project[];
+}
+
+/** 插件中心自带的技能库（skill-library），两边的 skills 文件夹都链接到它 */
+export interface Library {
+  on: boolean; name: string; folder: string; groups: number; skills: number;
+  /** 技能库自己每次会话常驻的开销，和按需的那些省下的开销 */
+  cost: number; saved: number;
+  apps: { app: AppKey; linked: boolean; problems: string[]; verify?: AppEntry["verify"]; repair?: AppEntry["repair"] }[];
 }
 
 export function howText(o: InstallOption): string {
   if (o.how === "native") return "直接安装";
   if (o.how === "adopt") return "克隆到 ~/.yuwanplugins 交给插件中心管理，再装进去";
   if (o.how === "port") return `从 ${APP_NAME[o.from ?? "codex"]} 移植 skill：复制一份到 ~/.yuwanplugins 再链接进去`;
+  if (o.how === "link") return "链接到 ~/.yuwanplugins/skills 里统一存放的那份";
+  if (o.how === "move") return `把 ${APP_NAME[o.from ?? "codex"]} 里的那份挪进 ~/.yuwanplugins/skills 统一存放，两边都链接过去`;
   return o.why ?? "装不了";
 }
 
@@ -87,6 +118,7 @@ export interface State {
     launcher: string;
   };
   tools: Record<AppKey | "git", string>;
+  library: Library;
   plugins: Plugin[];
   log: string[];
 }
@@ -135,7 +167,9 @@ export const api = {
   sync: (key: string) => call<Result>("/api/sync", { key }),
   install: (key: string, apps: AppKey[]) => call<Result>("/api/install", { key, apps }),
   uninstall: (key: string, target?: { id: string; app: AppKey }) => call<Result>("/api/uninstall", { key, ...target }),
-  verify: (key: string, app: AppKey) => call<Result>("/api/verify", { key, app }),
+  verify: (key: string, app?: AppKey) => call<Result>("/api/verify", { key, app }),
+  /** 常驻还是按需；key 为 library 时 sync 和 verify 针对技能库本身 */
+  mode: (key: string, on_demand: boolean) => call<Result>("/api/mode", { key, on_demand }),
   probe: (repo: string) => call<Probe>("/api/probe", { repo }),
   add: (repo: string, branch: string, apps: AppKey[]) => call<Result>("/api/add", { repo, branch, apps }),
   auto: (enabled: boolean, interval_minutes: number) => call<Result>("/api/auto", { enabled, interval_minutes }),
@@ -159,8 +193,15 @@ export function when(value: string | number | null | undefined): string {
 }
 
 export const short = (sha?: string | null) => (sha ? sha.slice(0, 7) : "—");
+export const isSkill = (p: Plugin) => p.kind === "skill";
+/** 插件中心管的：受管插件，或者统一存放的 skill */
+export const isOurs = (p: Plugin) => !!p.managed || !!p.skill?.ours;
 export const installedApps = (p: Plugin) => p.apps.filter((a) => a.installed);
-export const canDelete = (p: Plugin) => !p.official && (!!p.managed || p.apps.some((a) => a.installed && !a.official));
-export const canSync = (p: Plugin) => !p.official && p.apps.some((a) => a.installed);
-/** 装着的 app 里，配置有问题或真实检查没通过的 */
-export const troubledApps = (p: Plugin) => p.apps.filter((a) => a.installed && ((a.problems?.length ?? 0) > 0 || a.verify?.ok === false));
+export const canDelete = (p: Plugin) => !p.official && (isOurs(p) || p.apps.some((a) => a.installed && !a.official));
+/** 独立的 skill 没有远端可拉，只有统一存放、装在 app 里的才能同步（补链接）；受管插件按需时也能拉取更新 */
+export const canSync = (p: Plugin) => (isSkill(p) ? !!p.skill?.ours && !p.on_demand : !p.official && (!!p.managed || p.apps.some((a) => a.installed)));
+/** token 数：粗估的，取整到十位 */
+export const tokens = (n: number) => (n < 100 ? String(n) : (Math.round(n / 10) * 10).toLocaleString("en-US"));
+/** 装着的 app 里，配置有问题或真实检查没通过的；插件中心管的 skill，链接被删了也算 */
+export const troubledApps = (p: Plugin) => p.apps.filter((a) => (a.installed || (isSkill(p) && a.state === "missing"))
+  && ((a.problems?.length ?? 0) > 0 || a.verify?.ok === false));

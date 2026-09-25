@@ -1,5 +1,7 @@
-"""端到端测试：通过 pluginhub.exe --run api 调用接口，覆盖添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。
-用本地 git 仓库当远端，不碰 dclh。会真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，测完会卸掉。
+"""端到端测试：通过 pluginhub.exe --run api 调用接口，覆盖添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载，
+独立 skill 的收编、两边链接、修复和删除，以及按需（技能库）。
+用本地 git 仓库当远端，不碰 dclh。会真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件和两个测试 skill，
+按需时还会在 ~/.claude/settings.json 里临时加上技能库的读取许可。测完会卸掉并清理干净，最后核对两边的配置和测试前一样。
 
 先构建 exe（cargo build --release），再运行：python scripts/e2e.py
 """
@@ -70,6 +72,15 @@ def check(label, ok):
 def rmtree(p):
     if p.exists():
         shutil.rmtree(p, onerror=lambda f, x, e: (os.chmod(x, 0o666), f(x)))
+
+
+def is_link_to(link, target):
+    try:
+        t = os.readlink(link)
+    except OSError:
+        return False
+    t = t.removeprefix("\\\\?\\")
+    return os.path.normcase(os.path.abspath(t)) == os.path.normcase(os.path.abspath(target))
 
 
 rmtree(work)
@@ -166,6 +177,54 @@ st = api("state")
 check("后台任务交给 exe 自己", st["hub"]["launcher"].lower().startswith(f'"{str(EXE).lower()}"') or st["hub"]["launcher"].lower().startswith(str(EXE).lower()))
 print("   launcher:", st["hub"]["launcher"])
 
+# 8b. 按需：插件从两边卸下，列进技能库；两边都链接技能库，Claude Code 的 settings.json 加上读取许可；
+#     后台检查能把删掉的链接和许可补回来；改回常驻就装回去，没有按需的了技能库也撤掉
+LIB, LIB_NAME = HUB_DIR / "library", "skill-library"
+SETTINGS = HOME / ".claude" / "settings.json"
+SETTINGS_RAW = SETTINGS.read_bytes()
+SETTINGS_BEFORE = json.loads(SETTINGS_RAW)
+LIB_ON_BEFORE = st["library"]["on"]  # 本机本来就有按需的东西时，技能库不会撤掉
+
+
+def allow_rules():
+    return json.loads(SETTINGS.read_text(encoding="utf-8")).get("permissions", {}).get("allow", [])
+
+
+def lib_ok():
+    return all((a.get("verify") or {}).get("ok") for a in api("state")["library"]["apps"])
+
+
+res = api("mode", {"key": ID, "on_demand": True})
+print("   mode:", "\n        ".join(res.get("notes") or [res.get("error")]))
+r = row()
+check("按需后两边都卸下了", not (CLAUDE_SKILLS / ID).exists() and f'"{ID}@personal"' not in (CODEX_HOME / "config.toml").read_text(encoding="utf-8"))
+check("按需后插件文件夹还在，状态里是按需", (folder / "skills/hello/SKILL.md").is_file() and r["on_demand"] and not any(a["installed"] for a in r["apps"]))
+group = LIB / "groups" / f"{ID}.md"
+index = (LIB / "SKILL.md").read_text(encoding="utf-8")
+check("技能库的目录里有它的技能和 SKILL.md 的位置，开头的说明里有技能名和用途", group.is_file()
+      and str(folder / "skills" / "hello" / "SKILL.md") in group.read_text(encoding="utf-8") and "hello (e2e skill)" in index.split("---")[1])
+check("两边都链接了技能库", is_link_to(CLAUDE_SKILLS / LIB_NAME, LIB) and is_link_to(CODEX_HOME / "skills" / LIB_NAME, LIB))
+check("settings.json 加上了读技能库和 ~/.yuwanplugins 的许可", any(".pluginhub/library" in a for a in allow_rules()) and any(".yuwanplugins" in a for a in allow_rules()))
+check("技能库的真实检查都通过（Codex 的模型提示里有技能库、没有按需的 hello）", lib_ok())
+os.rmdir(CLAUDE_SKILLS / LIB_NAME)
+cut = json.loads(SETTINGS.read_text(encoding="utf-8"))
+cut["permissions"]["allow"] = [a for a in cut["permissions"]["allow"] if "library" not in a]
+SETTINGS.write_text(json.dumps(cut, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+problems = [p for a in api("state")["library"]["apps"] for p in a["problems"]]
+check(f"状态里写出了技能库的问题：{problems}", any("链接不见了" in p for p in problems) and any("许可" in p for p in problems))
+notes = notes_of("guard", {"enabled": True})
+check("后台检查补回了技能库的链接和读取许可", is_link_to(CLAUDE_SKILLS / LIB_NAME, LIB) and any(".pluginhub/library" in a for a in allow_rules())
+      and any(LIB_NAME in n and "后台检查修复" in n for n in notes))
+res = api("mode", {"key": ID, "on_demand": False})
+r = row()
+check("改回常驻后两边都装回来了，真实检查通过", {a["app"]: a.get("state") for a in r["apps"]} == {"claude": "ok", "codex": "ok"}
+      and all((a.get("verify") or {}).get("ok") for a in r["apps"]))
+check("技能库里没有它了", not group.exists() if LIB_ON_BEFORE else not LIB.exists() and not (CLAUDE_SKILLS / LIB_NAME).exists() and not (CODEX_HOME / "skills" / LIB_NAME).exists())
+settings_back = json.loads(SETTINGS.read_text(encoding="utf-8")) == SETTINGS_BEFORE
+check("Claude Code 的 settings.json 和测试前一样", settings_back)
+if not settings_back:
+    SETTINGS.write_bytes(SETTINGS_RAW)
+
 # 9. 只从 Codex 卸载，再从 Claude 卸载 → 不再管理，文件夹挪进备份
 notes = notes_of("uninstall", {"key": ID, "id": f"{ID}@personal", "app": "codex"})
 r = row()
@@ -173,18 +232,81 @@ check("从 Codex 卸掉后 Claude 还在", {a["app"]: a["installed"] for a in r[
 notes = notes_of("uninstall", {"key": ID})
 check("全部卸掉后不再管理", not any(r["key"] == ID for r in api("state")["plugins"]) and not folder.exists())
 check("插件文件夹挪进了备份", any(BACKUP_DIR.glob(f"{ID}-*")))
-check("Codex 的 config.toml 和测试前一样", (CODEX_HOME / "config.toml").read_text(encoding="utf-8") == CODEX_CONFIG_BEFORE)
 
-# 收尾：去掉测试插件在 state.json 里的记录、备份和另存的文件夹、测试用的仓库
+# 10. 独立的 skill：只装在 Codex 里的，装到 Claude Code → 挪进 ~/.yuwanplugins/skills 统一存放，两边都换成链接
+SK = f"{ID}-skill"
+skill_src = CODEX_HOME / "skills" / SK
+ours_skill = PLUGINS_DIR / "skills" / SK
+rmtree(skill_src)
+skill_src.mkdir(parents=True)
+(skill_src / "SKILL.md").write_text("---\nname: yp-e2e-skill\ndescription: 'e2e test skill, it''s temporary'\n---\nhello\n", encoding="utf-8")
+
+
+def srow():
+    return next((r for r in api("state")["plugins"] if r["key"] == f"skill:{SK}"), None)
+
+
+r = srow()
+check("独立的 skill 出现在列表里，只装在 Codex", r is not None and r["kind"] == "skill" and [a["app"] for a in r["apps"] if a["installed"]] == ["codex"])
+check("SKILL.md 开头单引号里的 '' 读对了", r is not None and r["description"] == "e2e test skill, it's temporary")
+check("能装到 Claude Code，方式是先挪进统一存放的地方", r is not None and (r["install"].get("claude") or {}).get("how") == "move")
+res = api("install", {"key": f"skill:{SK}", "apps": ["claude"]})
+print("   skill install:", res.get("notes") or res.get("error"))
+r = srow()
+check("统一存放在 ~/.yuwanplugins/skills", (ours_skill / "SKILL.md").is_file() and r["skill"]["ours"])
+check("两边都是指向它的链接", is_link_to(CLAUDE_SKILLS / SK, ours_skill) and is_link_to(skill_src, ours_skill))
+check("两边都显示已链接", {a["app"]: a.get("state") for a in r["apps"]} == {"claude": "ok", "codex": "ok"})
+check("装完的真实检查都通过", all((a.get("verify") or {}).get("ok") for a in r["apps"]))
+os.rmdir(CLAUDE_SKILLS / SK)
+r = srow()
+check("链接被删以后显示出问题", any(a["app"] == "claude" and a.get("state") == "missing" for a in r["apps"]))
+notes = notes_of("guard", {"enabled": True})
+check("后台检查把 skill 的链接修好了", is_link_to(CLAUDE_SKILLS / SK, ours_skill) and any(SK in n and "已修复" in n for n in notes))
+res = api("sync", {"key": f"skill:{SK}"})
+check("同步（补链接并检查）不报错", "error" not in res)
+
+# 10b. 技能按需：两边的链接拆掉，统一存放的那份留着；改回常驻就链接回去
+api("mode", {"key": f"skill:{SK}", "on_demand": True})
+check("技能按需后两边的链接都拆了，统一存放的那份还在", not (CLAUDE_SKILLS / SK).exists() and not skill_src.exists()
+      and (ours_skill / "SKILL.md").is_file() and srow()["on_demand"])
+check("技能库的 skills 组里有它", SK in (LIB / "groups" / "skills.md").read_text(encoding="utf-8") and lib_ok())
+api("mode", {"key": f"skill:{SK}", "on_demand": False})
+check("技能改回常驻后两边都链接回来了", is_link_to(CLAUDE_SKILLS / SK, ours_skill) and is_link_to(skill_src, ours_skill))
+# 只在 Codex 里的技能直接改成按需：先挪进统一存放的地方，再拆掉链接；从技能库删掉后挪进备份
+SK2 = f"{ID}-skill2"
+sk2_src = CODEX_HOME / "skills" / SK2
+rmtree(sk2_src)
+sk2_src.mkdir(parents=True)
+(sk2_src / "SKILL.md").write_text("---\nname: yp-e2e-skill2\ndescription: second e2e skill\n---\nhi\n", encoding="utf-8")
+res = api("mode", {"key": f"skill:{SK2}", "on_demand": True})
+print("   skill2 mode:", res.get("notes") or res.get("error"))
+check("只在 Codex 里的技能改成按需：挪进统一存放的地方，Codex 那边不留链接", (PLUGINS_DIR / "skills" / SK2 / "SKILL.md").is_file() and not sk2_src.exists()
+      and SK2 in (LIB / "groups" / "skills.md").read_text(encoding="utf-8"))
+api("uninstall", {"key": f"skill:{SK2}"})
+check("从技能库删掉：不再管理，挪进备份", not (PLUGINS_DIR / "skills" / SK2).exists() and any(BACKUP_DIR.glob(f"skill-{SK2}-*"))
+      and not any(r["key"] == f"skill:{SK2}" for r in api("state")["plugins"]))
+check("技能库里没有测试的技能了", not LIB.exists() if not LIB_ON_BEFORE else SK2 not in (LIB / "groups" / "skills.md").read_text(encoding="utf-8"))
+api("uninstall", {"key": f"skill:{SK}", "id": f"skill:{SK}", "app": "codex"})
+check("只从 Codex 删：拆了链接，统一存放的那份还在", not skill_src.exists() and ours_skill.is_dir() and is_link_to(CLAUDE_SKILLS / SK, ours_skill))
+api("uninstall", {"key": f"skill:{SK}"})
+check("从所有 app 删掉后不再管理", srow() is None and not ours_skill.exists() and not (CLAUDE_SKILLS / SK).exists())
+check("统一存放的那份挪进了备份", any(BACKUP_DIR.glob(f"skill-{SK}-*")))
+check("Codex 的 config.toml 和测试前一样", (CODEX_HOME / "config.toml").read_text(encoding="utf-8") == CODEX_CONFIG_BEFORE)
+check("Claude Code 的 settings.json 最后也和测试前一样", json.loads(SETTINGS.read_text(encoding="utf-8")) == SETTINGS_BEFORE)
+
+# 收尾：去掉测试插件、测试 skill 和（测试前没有的）技能库在 state.json 里的记录，备份和另存的文件夹，测试用的仓库
 st_path = HUB_DIR / "state.json"
 st = json.loads(st_path.read_text(encoding="utf-8"))
 for k in ("verify", "repairs"):
-    for key in [x for x in st.get(k, {}) if ID in x]:
+    for key in [x for x in st.get(k, {}) if ID in x or (not LIB_ON_BEFORE and LIB_NAME in x)]:
         del st[k][key]
 st.get("plugins", {}).pop(ID, None)
 st_path.write_text(json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-for d in [*BACKUP_DIR.glob(f"{ID}-*"), *(SAVED_DIR.glob(f"{ID}-*") if SAVED_DIR.exists() else [])]:
+for d in [*BACKUP_DIR.glob(f"{ID}-*"), *BACKUP_DIR.glob(f"skill-{SK}-*"), *BACKUP_DIR.glob(f"skill-{SK2}-*"), *(SAVED_DIR.glob(f"{ID}-*") if SAVED_DIR.exists() else [])]:
     rmtree(d)
+for d in (PLUGINS_DIR / "skills",):
+    if d.exists() and not any(d.iterdir()):
+        d.rmdir()
 if SAVED_DIR.exists() and not any(SAVED_DIR.iterdir()):
     SAVED_DIR.rmdir()
 rmtree(work)

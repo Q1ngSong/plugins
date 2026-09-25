@@ -10,6 +10,7 @@ use crate::bail;
 use crate::claude::{split_id, ClaudeCode};
 use crate::codex::Codex;
 use crate::gitx::*;
+use crate::library;
 use crate::schedule::*;
 use crate::store::*;
 use crate::util::*;
@@ -86,6 +87,27 @@ fn update_one(p: &PluginCfg, m: &mut Map<String, Value>, claude: &ClaudeCode, co
         let short = |s: &Option<String>| s.as_deref().map(|x| x.chars().take(7).collect::<String>()).unwrap_or_else(|| "无".into());
         notes.push(format!("{tag} {} {} → {}：{}", display(&d), short(&old), short(&new), info.map(|c| c.subject).unwrap_or_default()));
     }
+    notes.extend(link_plugin(p, claude, codex, force)?);
+    set(m, "updated_at", stamp());
+    set(m, "checked_at", stamp());
+    set(m, "error", pending.clone().map(Value::from).unwrap_or(Value::Null));
+    if pending.is_none() && !p.locked {
+        // 只记真正从远端拉到的提交，本地提交不能算进去
+        set(m, "commit", new.map(Value::from).unwrap_or(Value::Null));
+    }
+    for n in &notes {
+        log(n);
+    }
+    Ok(notes)
+}
+
+/// 按要装的 app 把受管插件链接进去；按需的不装，只列在技能库里
+fn link_plugin(p: &PluginCfg, claude: &ClaudeCode, codex: &Codex, force: bool) -> R<Vec<String>> {
+    let mut notes = Vec::new();
+    if p.on_demand {
+        return Ok(notes);
+    }
+    let (tag, d) = (format!("[{}]", p.id), repo_dir(p));
     let man = read_manifests(&d, None);
     if p.target("claude") {
         for c in &man.claude_plugins {
@@ -96,16 +118,6 @@ fn update_one(p: &PluginCfg, m: &mut Map<String, Value>, claude: &ClaudeCode, co
         if let Some(name) = &man.codex_name {
             notes.extend(codex.link(name, &d, force)?.into_iter().map(|n| format!("{tag} Codex：{n}")));
         }
-    }
-    set(m, "updated_at", stamp());
-    set(m, "checked_at", stamp());
-    set(m, "error", pending.clone().map(Value::from).unwrap_or(Value::Null));
-    if pending.is_none() && !p.locked {
-        // 只记真正从远端拉到的提交，本地提交不能算进去
-        set(m, "commit", new.map(Value::from).unwrap_or(Value::Null));
-    }
-    for n in &notes {
-        log(n);
     }
     Ok(notes)
 }
@@ -131,7 +143,21 @@ pub fn op_update(pid: Option<&str>, force: bool) -> R<Vec<String>> {
         }
         save_state(&st)?;
     }
+    // 拉取后技能可能多了少了，技能库的目录跟着变
+    notes.extend(library_refresh());
     Ok(notes)
+}
+
+/// 重新生成技能库，改动写进日志。出错不影响手上的操作，只记一句
+fn library_refresh() -> Vec<String> {
+    let notes = match library::refresh() {
+        Ok(changes) => changes.into_iter().map(|(app, what)| format!("[{}] {}：{what}", library::NAME, app_name(app))).collect(),
+        Err(e) => vec![format!("[{}] 没更新好：{e}", library::NAME)],
+    };
+    for n in &notes {
+        log(n);
+    }
+    notes
 }
 
 pub struct Target {
@@ -144,7 +170,7 @@ pub struct Target {
 /// 插件中心装进两边的每一份：受管插件（按它要装的 app）和移植的副本
 pub fn linked_targets(cfg: &Config) -> Vec<Target> {
     let mut out = Vec::new();
-    for p in &cfg.plugins {
+    for p in cfg.plugins.iter().filter(|p| !p.on_demand) {
         let d = PLUGINS_DIR.join(&p.id);
         if !d.join(".git").exists() {
             continue;
@@ -201,6 +227,29 @@ pub fn op_guard() -> R<Vec<String>> {
         log(&line);
         notes.push(line);
         sub(&mut st, "repairs").insert(format!("{}:{}", t.app, t.name), json!({"at": stamp(), "what": problems, "ok": ok}));
+    }
+    // 插件中心管的独立 skill：两边的链接还在不在
+    for (app, name, problems, ok) in crate::skills::guard() {
+        let line = format!("[{name}] {}：发现{}，{}", app_name(&app), problems.join("；"), if ok { "已修复" } else { "没修好" });
+        log(&line);
+        notes.push(line);
+        sub(&mut st, "repairs").insert(format!("{app}:skill:{name}"), json!({"at": stamp(), "what": problems, "ok": ok}));
+    }
+    // 技能库：两边的链接，Claude Code 的读取许可（切换服务商的工具重写 settings.json 时会被冲掉）
+    match library::refresh() {
+        Ok(changes) => {
+            for (app, what) in changes {
+                let line = format!("[{}] {}：{what}（后台检查修复）", library::NAME, app_name(app));
+                log(&line);
+                notes.push(line);
+                sub(&mut st, "repairs").insert(format!("{app}:{}", library::NAME), json!({"at": stamp(), "what": [what], "ok": true}));
+            }
+        }
+        Err(e) => {
+            let line = format!("[{}] 没修好：{e}", library::NAME);
+            log(&line);
+            notes.push(line);
+        }
     }
     st.insert("last_guard".into(), Value::from(stamp()));
     save_state(&st)?;
@@ -304,7 +353,7 @@ pub fn add_plugin(repo: &str, branch: &str, apply: bool, apps: &[String]) -> R<V
         bail!("至少选一个要安装的 app。");
     }
     let branch = validate_branch(&if branch.trim().is_empty() { default_branch(&repo)? } else { branch.to_string() })?;
-    let mut p = PluginCfg { id: pid.clone(), repo: repo.clone(), branch: branch.clone(), targets: None, locked: false, extra: Map::new() };
+    let mut p = PluginCfg { id: pid.clone(), repo: repo.clone(), branch: branch.clone(), targets: None, locked: false, on_demand: false, extra: Map::new() };
     for x in APPS {
         p.set_target(x, apps.iter().any(|a| a == x));
     }
@@ -348,8 +397,12 @@ pub fn find_row(key: &str) -> R<Value> {
     ga(&state, "plugins").iter().find(|r| gs(r, "key") == key).cloned().ok_or_else(|| HubError::Msg(format!("本机没有这个插件：{key}")))
 }
 
-/// 插件中心装进这个 app 的那份实际放在哪：受管插件是 ~/.yuwanplugins 里的克隆，移植的是副本文件夹
+/// 插件中心装进这个 app 的那份实际放在哪：受管插件是 ~/.yuwanplugins 里的克隆，移植的是副本文件夹，
+/// 独立的 skill 是 ~/.yuwanplugins/skills 里统一存放的那份
 pub fn ours_root(row: &Value, a: &Value) -> Option<PathBuf> {
+    if gs(row, "kind") == "skill" {
+        return row["skill"].get("folder").and_then(Value::as_str).filter(|_| a.get("state").is_some()).map(PathBuf::from);
+    }
     if let Some(port) = a.get("port").filter(|p| p.is_object()) {
         if !gs(port, "folder").is_empty() {
             return Some(PathBuf::from(gs(port, "folder")));
@@ -365,8 +418,8 @@ pub fn ours_root(row: &Value, a: &Value) -> Option<PathBuf> {
 
 /// 真实检查：让装了插件的每个 app 自己确认看得到它的每个 skill，结果记在 state.json。
 ///
-/// 插件中心装的那份还要确认 app 读的正是 ~/.yuwanplugins 里的文件。返回 (通过的, 没通过的)。
-pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool) -> R<(Vec<String>, Vec<String>)> {
+/// 插件中心装的那份还要确认 app 读的正是 ~/.yuwanplugins 里的文件。with_library 为真时连技能库一起查。返回 (通过的, 没通过的)。
+pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool, with_library: bool) -> R<(Vec<String>, Vec<String>)> {
     let mut st = load_state();
     let (mut claude, mut codex) = (ClaudeCode::new(), Codex::new()); // 同一轮里 Codex 的模型提示只渲染一次
     let (mut good, mut bad) = (Vec::new(), Vec::new());
@@ -380,11 +433,22 @@ pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool) -> R
             if only_ours && root.is_none() {
                 continue;
             }
-            let expect = if gs(a, "path").is_empty() { Vec::new() } else { skill_names(Path::new(gs(a, "path")), app) };
-            let result = if app == "claude" { claude.verify(gs(a, "id"), &expect, root.as_deref()) } else { codex.verify(gs(a, "id"), &expect, root.as_deref()) };
+            let result = if gs(row, "kind") == "skill" {
+                // 独立的 skill：Codex 看模型提示；Claude Code 没有列出 skill 的命令，只能核对文件
+                if app == "claude" { Ok(crate::skills::check_claude(a, root.as_deref())) } else { codex.verify_skill(gs(row, "name"), root.as_deref()) }
+            } else {
+                let expect = if gs(a, "path").is_empty() { Vec::new() } else { skill_names(Path::new(gs(a, "path")), app) };
+                if app == "claude" { claude.verify(gs(a, "id"), &expect, root.as_deref()) } else { codex.verify(gs(a, "id"), &expect, root.as_deref()) }
+            };
             let (ok, detail) = result.unwrap_or_else(|e| (false, format!("检查时出错：{e}")));
             sub(&mut st, "verify").insert(format!("{app}:{}", gs(a, "id")), json!({"ok": ok, "detail": detail, "at": stamp()}));
             let line = format!("[{}] {} 真实检查{}：{detail}", gs(row, "key"), app_name(app), if ok { "通过" } else { "没通过" });
+            if ok { good.push(line) } else { bad.push(line) }
+        }
+    }
+    if with_library {
+        for (app, ok, detail) in library::verify(&mut codex, &mut st) {
+            let line = format!("[{}] {} 真实检查{}：{detail}", library::NAME, app_name(app), if ok { "通过" } else { "没通过" });
             if ok { good.push(line) } else { bad.push(line) }
         }
     }
@@ -397,7 +461,7 @@ pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool) -> R
 
 /// 对一个插件做真实检查。strict 为真时，有没通过的就报错（装完插件时用）。
 pub fn verify_plugin(key: &str, apps: Option<&[String]>, strict: bool) -> R<Vec<String>> {
-    let (mut good, bad) = run_verify(&[find_row(key)?], apps, false)?;
+    let (mut good, bad) = run_verify(&[find_row(key)?], apps, false, false)?;
     if strict && !bad.is_empty() {
         bail!("装好了，但真实检查没通过：\n{}", bad.join("\n"));
     }
@@ -405,10 +469,10 @@ pub fn verify_plugin(key: &str, apps: Option<&[String]>, strict: bool) -> R<Vec<
     Ok(good)
 }
 
-/// 对插件中心装的每一份做真实检查（检查更新和后台检查时用），只把没通过的列出来
+/// 对插件中心装的每一份和技能库做真实检查（检查更新和后台检查时用），只把没通过的列出来
 pub fn verify_ours() -> R<Vec<String>> {
     let state = build_state()?;
-    let (good, bad) = run_verify(ga(&state, "plugins"), None, true)?;
+    let (good, bad) = run_verify(ga(&state, "plugins"), None, true, true)?;
     if !bad.is_empty() {
         return Ok(bad);
     }
@@ -426,6 +490,13 @@ pub fn act_install(body: &Value) -> R<Vec<String>> {
     let mut apps: Vec<String> = body_apps(body).into_iter().filter(|x| installable.contains(&x.as_str())).collect();
     if apps.is_empty() {
         bail!("没有可以安装的 app。");
+    }
+    if gs(&row, "kind") == "skill" {
+        // 独立的 skill：统一存放一份，链接进选中的 app，再做真实检查。
+        // 收编时原来那个 app 的文件夹也换成了链接，所以每个装了它的 app 都要查
+        let mut notes = crate::skills::install(&row, &apps)?;
+        notes.extend(verify_plugin(gs(&row, "key"), None, true)?);
+        return Ok(notes);
     }
     let how = |x: &str| row["install"].get(x).map(|o| gs(o, "how").to_string()).unwrap_or_default();
     let mut notes = Vec::new();
@@ -464,6 +535,10 @@ pub fn act_install(body: &Value) -> R<Vec<String>> {
 
 /// 指定了 app 就只从那个 app 卸载；没指定就从所有装了它的 app 卸载（官方自带的不动）
 pub fn act_uninstall(body: &Value) -> R<Vec<String>> {
+    if gs(body, "key").starts_with("skill:") {
+        let row = find_row(gs(body, "key"))?;
+        return if gs(body, "app").is_empty() { crate::skills::uninstall_all(&row) } else { crate::skills::uninstall_app(&row, gs(body, "app")) };
+    }
     if !gs(body, "app").is_empty() {
         return uninstall_app(gs(body, "key"), gs(body, "id"), gs(body, "app"));
     }
@@ -553,6 +628,12 @@ pub fn uninstall_app(key: &str, pid: &str, app: &str) -> R<Vec<String>> {
 /// 受管的拉取最新并同步到两边；移植的副本从源插件重新复制；其余的让各自的 app 从原插件源更新
 pub fn act_sync(body: &Value) -> R<Vec<String>> {
     let row = find_row(gs(body, "key"))?;
+    if gs(&row, "kind") == "skill" {
+        // 独立的 skill 没有远端可拉：把该有的链接补上，再做一遍真实检查
+        let mut notes = crate::skills::sync(&row)?;
+        notes.extend(verify_plugin(gs(&row, "key"), None, false)?);
+        return Ok(notes);
+    }
     if let Some(m) = row.get("managed").filter(|m| m.is_object()) {
         if gb(m, "locked") {
             bail!("{} 已锁定，不同步。先解锁。", gs(&row, "name"));
@@ -587,6 +668,56 @@ pub fn act_sync(body: &Value) -> R<Vec<String>> {
         }
     }
     let notes: Vec<String> = notes.into_iter().map(|n| format!("[{}] {n}", gs(&row, "key"))).collect();
+    for n in &notes {
+        log(n);
+    }
+    Ok(notes)
+}
+
+/// 常驻还是按需。按需的从两边卸下，只列在技能库里，模型用到时再读；插件文件夹和要装的 app 都留着，改回常驻时照原样装回去。
+pub fn act_mode(body: &Value) -> R<Vec<String>> {
+    let row = find_row(gs(body, "key"))?;
+    let on = gb(body, "on_demand");
+    if on && !gb(&row["demand"], "ok") {
+        bail!("{} 不能改成按需：{}", gs(&row, "name"), gs(&row["demand"], "why"));
+    }
+    let mut notes = if gs(&row, "kind") == "skill" { crate::skills::set_on_demand(&row, on)? } else { plugin_mode(&row, on)? };
+    notes.extend(library_refresh());
+    // 按需的查技能库在不在、按需的技能是不是真的不在提示里了；改回常驻的查装回去的那份
+    let (good, bad) = if on { run_verify(&[], None, false, true)? } else { run_verify(&[find_row(gs(&row, "key"))?], None, false, false)? };
+    notes.extend(good.into_iter().chain(bad));
+    Ok(notes)
+}
+
+fn plugin_mode(row: &Value, on: bool) -> R<Vec<String>> {
+    let Some(m) = row.get("managed").filter(|m| m.is_object()) else {
+        bail!("{} 还不归插件中心管。先点安装，交给插件中心管理。", gs(row, "name"));
+    };
+    let mut cfg = load_config();
+    let p = find_managed(&mut cfg, gs(m, "id"))?;
+    if p.on_demand == on {
+        return Ok(Vec::new());
+    }
+    p.on_demand = on;
+    let p = p.clone();
+    save_config(&cfg)?;
+    let (claude, codex) = (ClaudeCode::new(), Codex::new());
+    let tag = format!("[{}]", p.id);
+    let mut notes = vec![format!("{tag} 改为{}", if on { "按需：从两边卸下，列进技能库，用到时再读" } else { "常驻：装回两边" })];
+    if on {
+        for a in ga(row, "apps").iter().filter(|a| gb(a, "installed") && a.get("state").is_some()) {
+            let (app, id) = (gs(a, "app"), gs(a, "id"));
+            if app == "claude" {
+                claude.remove(id)?;
+            } else {
+                codex.remove(id)?;
+                codex.forget(split_id(id).0)?;
+            }
+            notes.push(format!("{tag} {}：卸下了 {id}", app_name(app)));
+        }
+    } else {
+        notes.extend(link_plugin(&p, &claude, &codex, false)?);
+    }
     for n in &notes {
         log(n);
     }
@@ -654,8 +785,18 @@ pub fn open_target(target: &str) -> R<()> {
     bail!("只能打开插件中心的文件夹或网页链接。")
 }
 
+/// 技能库自己的同步和检查：重新生成、补上链接和读取许可，再做真实检查
+fn library_action(name: &str) -> R<Vec<String>> {
+    let mut notes = if name == "sync" { library_refresh() } else { Vec::new() };
+    let (good, bad) = run_verify(&[], None, false, true)?;
+    notes.extend(good.into_iter().chain(bad));
+    Ok(notes)
+}
+
 fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
-    Some(match name {
+    let result = match name {
+        "sync" | "verify" if gs(body, "key") == "library" => library_action(name),
+        "mode" => act_mode(body),
         "check" => op_check(),
         "update" => {
             let plugin = gs(body, "plugin");
@@ -684,7 +825,12 @@ fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
         "lock" => act_lock(body),
         "save" => act_save(body),
         _ => return None,
-    })
+    };
+    // 装、删、同步都可能让按需的技能变了，技能库的目录跟着变
+    Some(result.map(|mut notes| {
+        notes.extend(library_refresh());
+        notes
+    }))
 }
 
 /// 页面和命令行共用的接口：name 是接口名（state、check、update…），返回 (HTTP 状态码, JSON)

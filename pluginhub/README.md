@@ -13,6 +13,8 @@ src-tauri/src/          程序（Rust，Tauri 2）
   ops.rs                各项操作和接口分发
   view.rs               状态汇总、移植 skill
   claude.rs, codex.rs   两边的适配：状态、链接、卸载、真实检查
+  skills.rs             独立的技能：扫描两边的 skills 文件夹、统一存放、链接、删除、检查
+  library.rs            技能库：按需的插件和技能列成目录（skill-library），装进两边，Claude Code 的读取许可，检查
   gitx.rs               git：克隆、拉取、本地修改检测、读清单、备份
   usage.rs              扫描两边的会话记录，统计哪些项目用过插件
   schedule.rs           后台任务：计划任务，建不了就用「启动」文件夹加常驻进程
@@ -46,7 +48,13 @@ powershell -ExecutionPolicy Bypass -File scripts\build-app.ps1
 
 ## 测试
 
-没有单元测试。`scripts/e2e.py` 是端到端测试，要本机有 Python。它用一个本地 git 仓库当远端，通过 `pluginhub.exe --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载，最后清理干净。
+单元测试覆盖读 SKILL.md 开头的解析，以及技能库的几处纯计算：常驻开销的估算、开头说明的写法和长度上限、settings.json 里读取许可的增删：
+
+```powershell
+cd src-tauri; cargo test
+```
+
+`scripts/e2e.py` 是端到端测试，要本机有 Python。它用一个本地 git 仓库当远端，通过 `pluginhub.exe --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。按需也在里面：插件和技能改成按需、技能库的链接和读取许可被删后修复、改回常驻、从技能库删掉。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
 
 ```powershell
 python scripts\e2e.py

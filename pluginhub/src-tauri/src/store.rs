@@ -17,6 +17,9 @@ pub struct PluginCfg {
     /// 锁定：不检查、不拉取更新
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
+    /// 按需：不装进 app，只列在技能库里，用到时模型再去读
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_demand: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -69,10 +72,26 @@ pub struct ScheduleCfg {
     pub mode: Option<String>,
 }
 
+/// 插件中心管理的独立 skill：在 ~/.yuwanplugins/skills/<dir> 存一份，targets 里为真的 app 链接到它
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SkillCfg {
+    /// SKILL.md 里写的 name
+    pub name: String,
+    /// 文件夹名，也是两边 skills 文件夹里链接的名字
+    pub dir: String,
+    #[serde(default)]
+    pub targets: BTreeMap<String, bool>,
+    /// 按需：两边的链接拆掉，只列在技能库里；targets 留着，切回常驻时照原样链接
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_demand: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Config {
     #[serde(default)]
     pub plugins: Vec<PluginCfg>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<SkillCfg>,
     #[serde(default)]
     pub auto_update: AutoCfg,
     #[serde(default)]

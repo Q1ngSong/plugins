@@ -75,6 +75,16 @@ fn cmd_status() -> R<()> {
     let task_text = if gb(auto, "installed") { format!("在运行，下次 {}", gs(auto, "next_run")) } else { "没有".into() };
     out(&format!("自动更新：{auto_text}  后台检查：{}  后台任务：{task_text}", if gb(&hub["guard"], "enabled") { "开" } else { "关" }));
     out(&format!("后台任务的命令：{}", gs(hub, "launcher")));
+    let lib = &s["library"];
+    if gb(lib, "on") {
+        let num = |k: &str| lib.get(k).and_then(Value::as_u64).unwrap_or(0);
+        out(&format!("技能库：按需的 {} 个技能在 {}，每次会话只占约 {} token，省下约 {} token", num("skills"), gs(lib, "folder"), num("cost"), num("saved")));
+        for a in ga(lib, "apps") {
+            for problem in ga(a, "problems").iter().filter_map(Value::as_str) {
+                out(&format!("   {} ! {problem}", app_name(gs(a, "app"))));
+            }
+        }
+    }
     for r in ga(&s, "plugins") {
         let v = r.get("managed").filter(|m| m.is_object());
         let head = match v {
@@ -82,6 +92,9 @@ fn cmd_status() -> R<()> {
             None => "（未接管）".into(),
         };
         out(&format!("\n== {}  {head}", gs(r, "name")));
+        if gb(r, "on_demand") {
+            out("   按需：没装进 app，列在技能库里，用到时再读");
+        }
         if let Some(v) = v {
             if let Some(remote) = v.get("remote").filter(|x| x.is_object()) {
                 out(&format!("   远端最新：{}  {}", gs(remote, "short"), gs(remote, "subject")));
