@@ -17,10 +17,6 @@ const SEP: &str = r"(?:\\\\|/)+";
 static CLAUDE_USE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#""skill"\s*:\s*"([\w.:-]+)"|"subagent_type"\s*:\s*"([\w.-]+):|<command-name>/?([\w.:-]+)</command-name>"#).unwrap()
 });
-/// Claude Code 用 Read 这些工具读 ~/.yuwanplugins 里的文件（按需的技能就是这么读的）：skills/<名字>/ 是独立的技能，别的是插件文件夹。
-/// 只认工具参数里的 file_path，读出来的内容里出现的路径不算
-static CLAUDE_READ: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r#""file_path"\s*:\s*"[^"]*?\.yuwanplugins{SEP}(skills{SEP})?([\w.-]+){SEP}"#)).unwrap());
 /// Codex 用插件时会去读它缓存里的文件：.codex/plugins/cache/<插件源>/<插件>/...
 static CODEX_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r"plugins{SEP}cache{SEP}([\w.-]+){SEP}([\w.-]+){SEP}")).unwrap());
 /// 受管插件的缓存链接回 ~/.yuwanplugins，Codex 读的路径就成了 .yuwanplugins/<插件>/...
@@ -30,7 +26,7 @@ static CODEX_SKILL_USE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?:\.codex{SEP}skills(?:{SEP}\.system)?|\.yuwanplugins{SEP}skills){SEP}([\w-][\w.-]*){SEP}")).unwrap()
 });
 /// 统计规则变了就改这个数，旧的扫描缓存会作废重扫
-const SCAN_VERSION: u64 = 3;
+const SCAN_VERSION: u64 = 4;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct ProjRow {
@@ -106,7 +102,7 @@ pub fn worktree_parent(path: &Path) -> Option<String> {
 
 /// 一个会话文件里调用了哪些插件和独立的 skill、各几次。
 ///
-/// Claude Code 按插件名记；Codex 按「插件@插件源」记；两边读的是 ~/.yuwanplugins 里的文件，就记成「yuwan:<文件夹>」。
+/// Claude Code 按插件名记；Codex 按「插件@插件源」记，读的是 ~/.yuwanplugins 里的就记成「yuwan:<文件夹>」。
 /// 独立的 skill 两边都记成「skill:<名字>」。
 pub fn scan_session(path: &Path, app: &str) -> std::io::Result<BTreeMap<String, u64>> {
     let data = fs::read(path)?;
@@ -123,10 +119,6 @@ pub fn scan_session(path: &Path, app: &str) -> std::io::Result<BTreeMap<String, 
                 m.get(2).map(text).unwrap_or_default()
             };
             *hits.entry(key).or_insert(0) += 1;
-        }
-        for m in CLAUDE_READ.captures_iter(&data) {
-            let what = text(m.get(2).expect("group 2 always matches"));
-            *hits.entry(if m.get(1).is_some() { format!("skill:{what}") } else { format!("yuwan:{what}") }).or_insert(0) += 1;
         }
         return Ok(hits);
     }

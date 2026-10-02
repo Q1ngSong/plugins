@@ -135,6 +135,15 @@ pub fn read_front(md: &Path) -> Option<Front> {
     Some(f)
 }
 
+/// 一个技能每次会话常驻的开销（粗估 token）：名字加说明。按 Claude Code 报的数校准过：
+/// 中文大约一字一个半 token，其余大约四个字符一个，每条再加一点格式。
+pub fn tokens(name: &str, description: &str) -> u64 {
+    let text = format!("{name}: {description}");
+    let cjk = text.chars().filter(|c| *c as u32 >= 0x2E80).count() as u64;
+    let other = text.chars().count() as u64 - cjk;
+    cjk * 3 / 2 + other / 4 + 8
+}
+
 // ---------------------------------------------------------------- 扫描两边的 skills 文件夹
 
 /// 在某个 app 里找到的一个独立 skill
@@ -159,8 +168,8 @@ fn scan_dir(app: &'static str, dir: &Path, official: bool, out: &mut Vec<Found>)
     paths.sort();
     for path in paths {
         let name = file_name(&path);
-        // .system 另外扫；Claude Code 的 skills 文件夹里也放插件（带 .claude-plugin 的），那些不算；技能库是插件中心自己的，单独显示
-        if name.starts_with('.') || !path.is_dir() || path.join(".claude-plugin").join("plugin.json").is_file() || links_to(&path, &crate::library::LIB_DIR) {
+        // .system 另外扫；Claude Code 的 skills 文件夹里也放插件（带 .claude-plugin 的），那些不算
+        if name.starts_with('.') || !path.is_dir() || path.join(".claude-plugin").join("plugin.json").is_file() {
             continue;
         }
         let Some(mut front) = read_front(&path.join("SKILL.md")) else { continue };
@@ -217,12 +226,10 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
             .and_then(|d| read_front(&d.join("SKILL.md")))
             .or_else(|| list.first().map(|f| f.front.clone()))
             .unwrap_or_default();
-        let on_demand = managed.is_some_and(|s| s.on_demand);
         let mut apps = Vec::new();
         for app in APPS {
             let here = list.iter().find(|f| f.app == app);
-            // 按需的不链接进 app，没有链接不算问题
-            let wanted = managed.is_some_and(|s| !s.on_demand && s.targets.get(app).copied().unwrap_or(false));
+            let wanted = managed.is_some_and(|s| s.targets.get(app).copied().unwrap_or(false));
             if here.is_none() && !(ours.is_some() && wanted) {
                 continue;
             }
@@ -264,23 +271,11 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
             "skill": {"ours": ours.is_some(), "folder": ours.as_deref().map(display), "dir": dir},
             "apps": apps, "supports": supports, "official": official,
         });
-        // 按需的从技能库读，要装进 app 先改回常驻
-        let install = if on_demand { serde_json::Map::new() } else { install_options(&row, ours.as_deref(), &dir) };
+        let install = install_options(&row, ours.as_deref(), &dir);
         let installable: Vec<String> = install.iter().filter(|(_, o)| o.get("how").map(|h| !h.is_null()).unwrap_or(false)).map(|(k, _)| k.clone()).collect();
         row["install"] = Value::Object(install);
         row["installable"] = json!(installable);
-        row["on_demand"] = Value::Bool(on_demand);
-        row["cost"] = Value::from(crate::library::tokens(&name, &front.description));
-        row["demand"] = if official {
-            json!({"ok": false, "why": "Codex 自带的技能，由 Codex 自己管"})
-        } else if ours.is_some() || ga(&row, "apps").iter().any(|a| gb(a, "installed") && !gb(a, "linked")) {
-            json!({"ok": true, "lost": []})
-        } else {
-            json!({"ok": false, "why": "它是指向别处的链接，插件中心不动别处的文件夹"})
-        };
-        if let Some(s) = managed.filter(|s| s.on_demand) {
-            row["projects"] = json!(project_rows(&crate::library::skill_projects(s, usage)));
-        }
+        row["cost"] = Value::from(tokens(&name, &front.description));
         rows.push(row);
     }
     rows.sort_by_key(|r| (!gb(&r["skill"], "ours"), gb(r, "official"), gs(r, "name").to_lowercase()));
@@ -381,7 +376,7 @@ pub fn install(row: &Value, apps: &[String]) -> R<Vec<String>> {
     let i = match cfg.skills.iter().position(|s| s.name == name) {
         Some(i) => i,
         None => {
-            cfg.skills.push(SkillCfg { name: name.clone(), dir: dir.clone(), targets: BTreeMap::new(), on_demand: false });
+            cfg.skills.push(SkillCfg { name: name.clone(), dir: dir.clone(), targets: BTreeMap::new() });
             cfg.skills.len() - 1
         }
     };
@@ -463,7 +458,7 @@ pub fn sync(row: &Value) -> R<Vec<String>> {
         bail!("{name} 还不归插件中心管，没有可同步的。点安装把它装到另一个 app，就会统一存放。");
     };
     let cfg = load_config();
-    let Some(s) = cfg.skills.iter().find(|s| s.name == name && !s.on_demand) else { return Ok(Vec::new()) };
+    let Some(s) = cfg.skills.iter().find(|s| s.name == name) else { return Ok(Vec::new()) };
     let mut notes = Vec::new();
     for (app, on) in &s.targets {
         if *on {
@@ -476,47 +471,11 @@ pub fn sync(row: &Value) -> R<Vec<String>> {
     Ok(tagged(&name, notes))
 }
 
-/// 常驻还是按需。按需：两边的链接拆掉，统一存放的那份和要链接的 app 都留着，切回常驻时照原样链接回去。
-/// 还没统一存放的先收编，挪进 ~/.yuwanplugins/skills。
-pub fn set_on_demand(row: &Value, on: bool) -> R<Vec<String>> {
-    let name = gs(row, "name").to_string();
-    if gb(row, "official") {
-        bail!("{name} 是 Codex 自带的，由 Codex 自己管。");
-    }
-    let dir = gs(&row["skill"], "dir").to_string();
-    let mut notes = Vec::new();
-    if on && ours_of(row).is_none() {
-        adopt(row, &dir, &mut notes)?;
-        let targets = ga(row, "apps").iter().filter(|a| gb(a, "installed") && !gb(a, "official")).map(|a| (gs(a, "app").to_string(), true)).collect();
-        let mut cfg = load_config();
-        cfg.skills.retain(|s| s.name != name);
-        cfg.skills.push(SkillCfg { name: name.clone(), dir: dir.clone(), targets, on_demand: false });
-        save_config(&cfg)?;
-    }
-    let mut cfg = load_config();
-    let Some(s) = cfg.skills.iter_mut().find(|s| s.name == name) else { bail!("{name} 还不归插件中心管。") };
-    s.on_demand = on;
-    let s = s.clone();
-    save_config(&cfg)?;
-    notes.push(if on { "改为按需：拆掉两边的链接，列进技能库，用到时再读".into() } else { "改为常驻：链接回两边".into() });
-    let ours = SKILLS_DIR.join(&s.dir);
-    for (app, want) in &s.targets {
-        let link = app_dir(app).join(&s.dir);
-        if on && links_to(&link, &ours) {
-            fs::remove_dir(&link)?;
-            notes.push(format!("{}：拆掉了链接 {}", app_name(app), display(&link)));
-        } else if !on && *want && make_junction(&link, &ours)? {
-            notes.push(format!("{}：链接 {} → {}", app_name(app), display(&link), display(&ours)));
-        }
-    }
-    Ok(tagged(&name, notes))
-}
-
 /// 后台检查：插件中心管的 skill，每个该有的链接是不是还在、还指向统一存放的那份。返回 (app, 名字, 问题, 修好没有)。
 pub fn guard() -> Vec<(String, String, Vec<String>, bool)> {
     let cfg = load_config();
     let mut out = Vec::new();
-    for s in cfg.skills.iter().filter(|s| !s.on_demand) {
+    for s in &cfg.skills {
         let ours = SKILLS_DIR.join(&s.dir);
         if !ours.join("SKILL.md").is_file() {
             continue;
@@ -602,6 +561,12 @@ mod tests {
         assert_eq!(f.version, "3");
         let g = front("---\r\nname: b\r\ndescription: plain start\r\n  continues here\r\n---\r\n");
         assert_eq!(g.description, "plain start continues here");
+    }
+
+    #[test]
+    fn tokens_count_chinese_heavier() {
+        assert_eq!(tokens("a", "bcdefgh"), 10); // "a: bcdefgh" 十个字符 → 2，加 8
+        assert_eq!(tokens("a", "中文"), 3 + 8); // 两个汉字算 3，"a: " 不到 4 个字符算 0
     }
 
     #[test]

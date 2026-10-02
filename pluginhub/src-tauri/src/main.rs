@@ -14,7 +14,6 @@ mod claude;
 mod cli;
 mod codex;
 mod gitx;
-mod library;
 mod ops;
 mod schedule;
 mod server;

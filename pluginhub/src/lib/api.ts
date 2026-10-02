@@ -60,9 +60,6 @@ export interface Managed {
 
 export type Kind = "plugin" | "skill";
 
-/** 能不能改成按需；lost 是按需时不会生效的东西（钩子、命令等） */
-export interface Demand { ok: boolean; why?: string; lost?: string[] }
-
 export interface Plugin {
   key: string;
   /** 插件，还是独立的 skill（不属于任何插件、单独放在 app 的 skills 文件夹里） */
@@ -80,21 +77,8 @@ export interface Plugin {
   install: Partial<Record<AppKey, InstallOption>>;
   installable: AppKey[];
   apps: AppEntry[];
-  /** 按需：没装进 app，列在技能库里，用到时模型再读 */
-  on_demand?: boolean;
-  /** 装在 app 里时，每次会话常驻的开销（粗估 token） */
+  /** 每次会话常驻的开销：技能的名字和说明（粗估 token） */
   cost?: number;
-  demand?: Demand;
-  /** 按需的才有：用过它的项目（两个 app 合起来） */
-  projects?: Project[];
-}
-
-/** 插件中心自带的技能库（skill-library），两边的 skills 文件夹都链接到它 */
-export interface Library {
-  on: boolean; name: string; folder: string; groups: number; skills: number;
-  /** 技能库自己每次会话常驻的开销，和按需的那些省下的开销 */
-  cost: number; saved: number;
-  apps: { app: AppKey; linked: boolean; problems: string[]; verify?: AppEntry["verify"]; repair?: AppEntry["repair"] }[];
 }
 
 export function howText(o: InstallOption): string {
@@ -118,7 +102,8 @@ export interface State {
     launcher: string;
   };
   tools: Record<AppKey | "git", string>;
-  library: Library;
+  /** 上次看 Codex 的技能清单：超了上限时 ok 为假，detail 写着几条说明被截短 */
+  codex_skills: { ok: boolean; detail: string; at: string } | null;
   plugins: Plugin[];
   log: string[];
 }
@@ -168,8 +153,8 @@ export const api = {
   install: (key: string, apps: AppKey[]) => call<Result>("/api/install", { key, apps }),
   uninstall: (key: string, target?: { id: string; app: AppKey }) => call<Result>("/api/uninstall", { key, ...target }),
   verify: (key: string, app?: AppKey) => call<Result>("/api/verify", { key, app }),
-  /** 常驻还是按需；key 为 library 时 sync 和 verify 针对技能库本身 */
-  mode: (key: string, on_demand: boolean) => call<Result>("/api/mode", { key, on_demand }),
+  /** 只看 Codex 的技能清单超没超上限 */
+  budget: () => call<Result>("/api/budget", {}),
   probe: (repo: string) => call<Probe>("/api/probe", { repo }),
   add: (repo: string, branch: string, apps: AppKey[]) => call<Result>("/api/add", { repo, branch, apps }),
   auto: (enabled: boolean, interval_minutes: number) => call<Result>("/api/auto", { enabled, interval_minutes }),
@@ -198,8 +183,8 @@ export const isSkill = (p: Plugin) => p.kind === "skill";
 export const isOurs = (p: Plugin) => !!p.managed || !!p.skill?.ours;
 export const installedApps = (p: Plugin) => p.apps.filter((a) => a.installed);
 export const canDelete = (p: Plugin) => !p.official && (isOurs(p) || p.apps.some((a) => a.installed && !a.official));
-/** 独立的 skill 没有远端可拉，只有统一存放、装在 app 里的才能同步（补链接）；受管插件按需时也能拉取更新 */
-export const canSync = (p: Plugin) => (isSkill(p) ? !!p.skill?.ours && !p.on_demand : !p.official && (!!p.managed || p.apps.some((a) => a.installed)));
+/** 独立的 skill 没有远端可拉，只有统一存放的才能同步（补链接）；受管插件总能同步（拉取、补链接） */
+export const canSync = (p: Plugin) => (isSkill(p) ? !!p.skill?.ours : !p.official && (!!p.managed || p.apps.some((a) => a.installed)));
 /** token 数：粗估的，取整到十位 */
 export const tokens = (n: number) => (n < 100 ? String(n) : (Math.round(n / 10) * 10).toLocaleString("en-US"));
 /** 装着的 app 里，配置有问题或真实检查没通过的；插件中心管的 skill，链接被删了也算 */

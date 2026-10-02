@@ -1,4 +1,4 @@
-import { AlertTriangle, Library, Lock, Plus, Puzzle, ScrollText, ShieldCheck, Wrench } from "lucide-react";
+import { AlertTriangle, Lock, Plus, Puzzle, Scissors, ScrollText, ShieldCheck, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppChip, Spinner, Tag } from "@/components/common/bits";
 import { PluginActions } from "@/components/common/PluginActions";
@@ -49,36 +49,28 @@ function Notices({ state, busy, run }: { state: State; busy: string | null; run:
         <span>后台检查最近一天修复了 {repairs.length} 处被改掉的插件配置（{repairs.map((x) => `${x.p.name} · ${APP_NAME[x.a.app]}`).join("、")}），最近一次在 {when(repairs.map((x) => x.at).sort().pop())}。</span>
       </div>
     )}
-    <LibraryStrip state={state} busy={busy} run={run} />
+    <CodexSkills state={state} busy={busy} run={run} />
   </>;
 }
 
-/* 技能库：按需的省下了多少、两边装好没有；没有按需的时候，说一句常驻的占了多少 */
-function LibraryStrip({ state, busy, run }: { state: State; busy: string | null; run: Run }) {
-  const lib = state.library;
-  const resident = state.plugins.filter((p) => isOurs(p) && !p.on_demand).reduce((n, p) => n + (p.cost ?? 0), 0);
-  if (!lib.on && !resident) return null;
-  const problems = lib.apps.flatMap((a) => [...a.problems, ...(a.verify && !a.verify.ok ? [a.verify.detail] : [])].map((x) => `${APP_NAME[a.app]}：${x}`));
-  const text = lib.on
-    ? `技能库：按需的 ${lib.skills} 个技能原本每次会话要约 ${tokens(lib.saved)} token，现在只加载技能库的一句说明，约 ${tokens(lib.cost)} token。`
-      + (resident ? `其余常驻的约 ${tokens(resident)} token。` : "")
-    : `插件中心管的插件和技能都是常驻的，每次会话约占 ${tokens(resident)} token。不常用的可以在详情页改成按需，收进技能库，用到时再读。`;
+/* Codex 的技能清单超了上限：它不报错，只是把说明截短，模型就挑不准技能。列出 Codex 里占得多的几个，删掉用不上的就好 */
+function CodexSkills({ state, busy, run }: { state: State; busy: string | null; run: Run }) {
+  const b = state.codex_skills;
+  if (!b || b.ok) return null;
+  const big = state.plugins.filter((p) => !p.official && (p.cost ?? 0) > 0 && p.apps.some((a) => a.app === "codex" && a.installed))
+    .sort((x, y) => (y.cost ?? 0) - (x.cost ?? 0)).slice(0, 3);
   return (
-    <div className={cn("flex flex-wrap items-center gap-2.5 rounded-lg border px-3.5 py-2 text-[13px]",
-      problems.length ? "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200" : "bg-card text-muted-foreground")}>
-      <Library className="h-4 w-4 flex-none" />
-      <span className="min-w-0 flex-1">{text}{problems.length > 0 && <> {problems.join("；")}</>}</span>
-      {lib.on && (problems.length ? (
-        <Button size="sm" disabled={!!busy} onClick={() => run("library", () => api.sync("library"), "技能库修好了")}>
-          {busy === "library" && <Spinner />}修复
-        </Button>
-      ) : (
-        <button className="text-xs font-medium text-blue-500 hover:underline disabled:opacity-50" disabled={!!busy}
-          title="Codex 看模型提示里有没有技能库、按需的技能是不是真的不在提示里了；Claude Code 核对链接和读取许可"
-          onClick={() => run("library", () => api.verify("library"), "检查完了")}>
-          {busy === "library" ? <span className="inline-flex items-center gap-1"><Spinner />检查中…</span> : "检查技能库"}
-        </button>
-      ))}
+    <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-[13px] text-amber-900 dark:text-amber-200">
+      <Scissors className="h-4 w-4 flex-none" />
+      <span className="min-w-0 flex-1">
+        Codex 的技能清单{b.detail}。模型是看着说明挑技能的，说明不全就会挑不准。删掉 Codex 里用不上的插件或技能就好
+        {big.length > 0 && `，占得多的有 ${big.map((p) => `${p.name}（约 ${tokens(p.cost ?? 0)} token）`).join("、")}`}。
+      </span>
+      <button className="text-xs font-medium hover:underline disabled:opacity-50" disabled={!!busy}
+        title="运行 codex debug prompt-input，把模型提示里的每条说明和 SKILL.md 原文比一遍"
+        onClick={() => run("budget", api.budget, "检查完了")}>
+        {busy === "budget" ? <span className="inline-flex items-center gap-1"><Spinner />检查中…</span> : "重新检查"}
+      </button>
     </div>
   );
 }
@@ -86,9 +78,8 @@ function LibraryStrip({ state, busy, run }: { state: State; busy: string | null;
 export function HomeView({ state, filter, kind, busy, run, confirm, onOpen, onAdd, onInstall }: {
   state: State; filter: Filter; kind: KindFilter; busy: string | null; run: Run; confirm: ConfirmFn; onOpen: (key: string) => void; onAdd: () => void; onInstall: (key: string) => void;
 }) {
-  // 按需的哪边都没装，但两边都能从技能库读到，按 app 筛选时也列出来
   const list = state.plugins.filter((p) => (kind === "all" || (p.kind ?? "plugin") === kind)
-    && (filter === "all" || p.on_demand || p.apps.some((a) => a.app === filter && a.installed)));
+    && (filter === "all" || p.apps.some((a) => a.app === filter && a.installed)));
   const pending = state.plugins.filter((p) => p.managed?.needs_update).length;
   const what = kind === "skill" ? "技能" : "插件";
 
@@ -141,10 +132,9 @@ export function HomeView({ state, filter, kind, busy, run, confirm, onOpen, onAd
                 </div>
                 <div className="relative">
                   <div className="break-all text-[15px] font-semibold leading-snug">{p.name}</div>
-                  {(version || p.managed?.needs_update || p.managed?.error || disabled || locked || modified || troubled || p.on_demand || (kind === "all" && isSkill(p))) && (
+                  {(version || p.managed?.needs_update || p.managed?.error || disabled || locked || modified || troubled || (kind === "all" && isSkill(p))) && (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {kind === "all" && isSkill(p) && <Tag tone="sky">技能</Tag>}
-                      {p.on_demand && <Tag tone="sky"><Library className="h-3 w-3" />按需</Tag>}
                       {version && <Tag tone="slate" mono>{version}</Tag>}
                       {locked && <Tag tone="slate"><Lock className="h-3 w-3" />已锁定</Tag>}
                       {modified && <Tag tone="amber">有本地修改</Tag>}
@@ -158,7 +148,7 @@ export function HomeView({ state, filter, kind, busy, run, confirm, onOpen, onAd
                 <p className="relative line-clamp-[8] text-xs leading-relaxed text-muted-foreground" title={p.description}>{p.description || (isSkill(p) ? "SKILL.md 里没有写介绍" : "插件里没有写介绍")}</p>
                 <div className="relative flex flex-wrap gap-1.5">
                   {installedApps(p).map((a) => <AppChip key={a.app + a.id} app={a.app} />)}
-                  {!installedApps(p).length && <span className="text-xs text-muted-foreground">{p.on_demand ? "在技能库里，用到时再读" : "哪边都没装"}</span>}
+                  {!installedApps(p).length && <span className="text-xs text-muted-foreground">哪边都没装</span>}
                 </div>
               </div>
             );

@@ -1,4 +1,5 @@
 //! Codex：受管插件在个人插件源里指向 ~/.yuwanplugins/<名字>，Codex 缓存里的子文件夹链接回那里
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -7,6 +8,7 @@ use serde_json::{json, Map, Value};
 
 use crate::claude::split_id;
 use crate::gitx::{backup, ours};
+use crate::skills::read_front;
 use crate::util::*;
 
 pub fn codex_version(folder: &Path) -> String {
@@ -55,6 +57,61 @@ pub fn mirror(cache: &Path, folder: &Path) -> R<bool> {
     Ok(changed)
 }
 
+/// 模型提示里列出的一个技能：- <名字>: <说明> (file: <SKILL.md 路径>)。插件里的技能，名字写成「插件:技能」
+struct PromptSkill {
+    name: String,
+    description: String,
+    file: String,
+}
+
+/// 模型提示里的技能清单。清单放不下时，Codex 把路径缩写成 r0/… 这样，前面另附一张对照表（- `r0` = `<文件夹>`），
+/// 这里换回完整的路径
+fn prompt_skills(text: &str) -> Vec<PromptSkill> {
+    // 只看技能那一段，别处碰巧长得像的行不算
+    let text = match (text.find("<skills_instructions>"), text.find("</skills_instructions>")) {
+        (Some(a), Some(b)) if a < b => &text[a..b],
+        _ => text,
+    };
+    let roots: HashMap<String, String> =
+        Regex::new(r"(?m)^- `(r\d+)` = `(.+)`\s*$").unwrap().captures_iter(text).map(|m| (m[1].to_string(), m[2].to_string())).collect();
+    Regex::new(r"(?m)^- (\S+): ?(.*)\(file: (.+)\)\s*$")
+        .unwrap()
+        .captures_iter(text)
+        .map(|m| {
+            let file = m[3].trim();
+            let file = match file.split_once('/') {
+                Some((alias, rest)) if roots.contains_key(alias) => format!("{}/{rest}", roots[alias]),
+                _ => file.to_string(),
+            };
+            PromptSkill { name: m[1].to_string(), description: m[2].trim().to_string(), file }
+        })
+        .collect()
+}
+
+/// 清单里有几条说明被 Codex 截短、几条只剩名字：拿提示里的说明和 SKILL.md 原文比
+fn trimmed(list: &[PromptSkill]) -> (usize, usize) {
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let (mut cut, mut gone) = (0, 0);
+    for s in list {
+        let Some(f) = read_front(Path::new(&s.file)) else { continue };
+        let (shown, full) = (squash(&s.description), squash(&f.description));
+        if full.is_empty() || shown == full {
+            continue;
+        }
+        if shown.is_empty() {
+            gone += 1;
+        } else if full.starts_with(shown.trim_end_matches(['…', '.'])) {
+            cut += 1;
+        }
+    }
+    (cut, gone)
+}
+
+/// 技能没出现在清单里时补一句：可能是清单超了上限，排在后面的被拿掉了
+fn over_hint(list: &[PromptSkill]) -> &'static str {
+    if trimmed(list) == (0, 0) { "" } else { "（Codex 的技能清单超了上限，见首页）" }
+}
+
 pub struct Codex {
     pub exe: Option<PathBuf>,
     /// plugin list 和模型提示，同一轮检查里只跑一次（渲染提示要好几秒）
@@ -96,6 +153,24 @@ impl Codex {
         Ok(self.prompt.as_deref().expect("filled"))
     }
 
+    /// 这一轮渲染过模型提示没有
+    pub fn rendered(&self) -> bool {
+        self.prompt.is_some()
+    }
+
+    /// Codex 的技能清单超没超上限。清单的地方有限（大约是模型上下文的 2%），超了 Codex 不报错：
+    /// 先把每条说明截短，再只留名字，最后把排在后面的整条拿掉。模型是看着说明挑技能的，所以拿提示里的说明和原文比。
+    /// 返回 (没超, 说明)
+    pub fn budget(&mut self) -> R<(bool, String)> {
+        let list = prompt_skills(self.prompt_text()?);
+        let (cut, gone) = trimmed(&list);
+        if cut + gone == 0 {
+            return Ok((true, format!("列出的 {} 个技能，说明都是全文", list.len())));
+        }
+        let what: Vec<String> = [(cut, "说明被截短"), (gone, "只剩名字")].iter().filter(|(n, _)| *n > 0).map(|(n, w)| format!("{n} 个{w}")).collect();
+        Ok((false, format!("超了上限，列出的 {} 个技能里 {}", list.len(), what.join("、"))))
+    }
+
     /// 让 Codex 自己说：plugin list 里有没有、启没启用，渲染出的模型提示里看不看得到每个 skill。
     ///
     /// root 是插件中心放插件的文件夹；给了就再确认 Codex 读的正是那里的文件，而不是缓存里的旧副本。
@@ -113,17 +188,16 @@ impl Codex {
         if !gb(e, "enabled") {
             return Ok((false, format!("codex plugin list 里有 {cid}，但它是停用的")));
         }
-        // 模型提示里每个 skill 一行：- <插件>:<skill>: <说明> (file: <SKILL.md 路径>)
-        let name = split_id(cid).0;
-        let re = Regex::new(&format!(r"(?m)^- {}:([^:\s]+): .*\(file: (.+)\)\s*$", regex::escape(name))).unwrap();
-        let text = self.prompt_text()?.to_string();
-        let seen: Vec<(String, String)> = re.captures_iter(&text).map(|m| (m[1].to_string(), m[2].trim().to_string())).collect();
-        let missing: Vec<&String> = expect.iter().filter(|s| !seen.iter().any(|(n, _)| n == *s)).collect();
+        // 模型提示里插件的每个 skill 一行，名字是「插件:skill」
+        let list = prompt_skills(self.prompt_text()?);
+        let prefix = format!("{}:", split_id(cid).0);
+        let seen: Vec<(&str, &str)> = list.iter().filter_map(|s| Some((s.name.strip_prefix(&prefix)?, s.file.as_str()))).collect();
+        let missing: Vec<&String> = expect.iter().filter(|s| !seen.iter().any(|(n, _)| n == s)).collect();
         if !missing.is_empty() {
             let shown: Vec<&str> = missing.iter().take(5).map(|s| s.as_str()).collect();
-            return Ok((false, format!("模型提示里少了 {} 个 skill：{}", missing.len(), shown.join("、"))));
+            return Ok((false, format!("模型提示里少了 {} 个 skill：{}{}", missing.len(), shown.join("、"), over_hint(&list))));
         }
-        let broken: Vec<&str> = seen.iter().filter(|(_, f)| !Path::new(f).is_file()).map(|(n, _)| n.as_str()).collect();
+        let broken: Vec<&str> = seen.iter().filter(|(_, f)| !Path::new(f).is_file()).map(|(n, _)| *n).collect();
         if !broken.is_empty() {
             let shown: Vec<&str> = broken.iter().take(5).copied().collect();
             return Ok((false, format!("模型提示里有 {} 个 skill 的文件打不开：{}", broken.len(), shown.join("、"))));
@@ -138,16 +212,15 @@ impl Codex {
         Ok((true, format!("codex plugin list 里已启用，模型提示里能看到 {} 个 skill", seen.len())))
     }
 
-    /// 独立的 skill：渲染出的模型提示里有没有它（一行 - <名字>: <说明> (file: <路径>)），文件打不打得开。
+    /// 独立的 skill：渲染出的模型提示里有没有它，文件打不打得开。
     ///
     /// root 是插件中心统一存放它的文件夹；给了就再确认 Codex 读的正是那里的文件。
     pub fn verify_skill(&mut self, name: &str, root: Option<&Path>) -> R<(bool, String)> {
-        let re = Regex::new(&format!(r"(?m)^- {}: .*\(file: (.+)\)\s*$", regex::escape(name))).unwrap();
-        let text = self.prompt_text()?.to_string();
-        let Some(m) = re.captures(&text) else {
-            return Ok((false, format!("Codex 的模型提示里没有 {name}")));
+        let list = prompt_skills(self.prompt_text()?);
+        let Some(s) = list.iter().find(|s| s.name == name) else {
+            return Ok((false, format!("Codex 的模型提示里没有 {name}{}", over_hint(&list))));
         };
-        let file = m[1].trim().to_string();
+        let file = &s.file;
         if !Path::new(&file).is_file() {
             return Ok((false, format!("模型提示里 {name} 指向的 {file} 打不开")));
         }
@@ -390,5 +463,47 @@ fn relative_to_home(folder: &Path) -> String {
             parts.extend(fc[common..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()));
             parts.join("\\")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 清单放不下时的样子（照 Codex 0.139 渲染出来的格式）：路径缩写成 r0/…，说明截短，再不够就只剩名字
+    const SHORT: &str = "<skills_instructions>\n## Skills\n### Skill roots\n- `r0` = `C:/Users/a/.codex/skills`\n- `r1` = `C:/Users/a/.yuwanplugins/dclh/skills`\n\
+### Available skills\n- autoresearch: Autonomous iterative experimentation loop for any programming task (file: r0/autoresearch/SKILL.md)\n\
+- dclh:writing-minimal-code: (file: r1/writing-minimal-code/SKILL.md)\n- pdf:pdf: Read PDF files (file: C:/x/pdf/SKILL.md)\n</skills_instructions>\n- not: a skill (file: elsewhere)\n";
+
+    #[test]
+    fn short_paths_are_expanded() {
+        let list = prompt_skills(SHORT);
+        let rows: Vec<(&str, &str, &str)> = list.iter().map(|s| (s.name.as_str(), s.description.as_str(), s.file.as_str())).collect();
+        assert_eq!(
+            rows,
+            [
+                ("autoresearch", "Autonomous iterative experimentation loop for any programming task", "C:/Users/a/.codex/skills/autoresearch/SKILL.md"),
+                ("dclh:writing-minimal-code", "", "C:/Users/a/.yuwanplugins/dclh/skills/writing-minimal-code/SKILL.md"),
+                ("pdf:pdf", "Read PDF files", "C:/x/pdf/SKILL.md"),
+            ]
+        );
+    }
+
+    #[test]
+    fn cut_and_dropped_descriptions_are_counted() {
+        let dir = std::env::temp_dir().join(format!("pluginhub-budget-{}", uuid::Uuid::new_v4().simple()));
+        let skill = |name: &str, desc: &str| {
+            let d = dir.join(name);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("SKILL.md"), format!("---\nname: {name}\ndescription: {desc}\n---\n")).unwrap();
+            display(&d.join("SKILL.md"))
+        };
+        let full = "Use before writing or changing any code";
+        let list = [("whole", full), ("cut", "Use before writing or"), ("gone", "")]
+            .map(|(name, shown)| PromptSkill { name: name.into(), description: shown.into(), file: skill(name, full) });
+        let counts = trimmed(&list);
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(counts, (1, 1));
+        assert_eq!(trimmed(&list), (0, 0)); // 读不到原文的不算
     }
 }

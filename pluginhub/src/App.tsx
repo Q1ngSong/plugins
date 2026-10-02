@@ -129,7 +129,7 @@ export default function App() {
         <div key={current.name + (current.name === "plugin" ? current.key : "")} className={current.name === "home" ? "animate-fade-in" : "animate-slide-in"}>
             {current.name === "home" && <HomeView state={state} filter={filter} kind={kind} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={() => setView({ name: "add" })}
               onInstall={(key) => { const p = state.plugins.find((x) => x.key === key); setView({ name: "plugin", key }); if (p) setInstalling({ key, apps: p.installable }); }} />}
-            {current.name === "plugin" && plugin && <PluginView p={plugin} lib={state.library} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
+            {current.name === "plugin" && plugin && <PluginView p={plugin} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
               onInstall={(apps) => setInstalling({ key: plugin.key, apps })} />}
             {current.name === "add" && <AddView initialRepo={current.repo} busy={busy} run={run} onDone={(key) => setView({ name: "plugin", key })} />}
             {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} />}

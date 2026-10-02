@@ -18,9 +18,7 @@ export function PluginActions({ p, busy, run, confirm, withDelete = true, onInst
       ? p.skill?.ours ? "\n插件中心也不再管它，~/.yuwanplugins/skills 里统一存放的那份会挪进备份，不会直接删掉。" : "\n技能文件夹会挪进 ~/.pluginhub/backups，不会直接删掉。"
       : p.managed ? "\n插件中心也不再管理它，~/.yuwanplugins 里的插件文件夹会挪进备份，不会直接删掉。" : "";
     const title = skill ? "删除技能" : "删除插件";
-    // 按需的没装进 app，只在技能库里
-    const body = p.on_demand ? `从技能库删除「${p.name}」？${extra}` : `从 ${apps} 删除「${p.name}」？${extra}`;
-    if (!(await confirm({ title, body, okText: "删除", danger: true }))) return;
+    if (!(await confirm({ title, body: `从 ${apps} 删除「${p.name}」？${extra}`, okText: "删除", danger: true }))) return;
     run(`del:${p.key}`, () => api.uninstall(p.key), "已删除");
   };
   const stop = (e: React.MouseEvent) => e.stopPropagation();

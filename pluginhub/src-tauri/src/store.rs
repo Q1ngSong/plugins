@@ -17,9 +17,6 @@ pub struct PluginCfg {
     /// 锁定：不检查、不拉取更新
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
-    /// 按需：不装进 app，只列在技能库里，用到时模型再去读
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub on_demand: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -81,9 +78,6 @@ pub struct SkillCfg {
     pub dir: String,
     #[serde(default)]
     pub targets: BTreeMap<String, bool>,
-    /// 按需：两边的链接拆掉，只列在技能库里；targets 留着，切回常驻时照原样链接
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub on_demand: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

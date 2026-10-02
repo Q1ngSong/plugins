@@ -1,7 +1,7 @@
 import { FolderGit2, Lock, PackagePlus, Save, ShieldAlert, ShieldCheck, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppChip, APP_TONE, IconButton, Spinner, Tag } from "@/components/common/bits";
-import { api, APP_NAME, APPS, AppEntry, AppKey, howText, isSkill, Library, Plugin, Project, short, tokens, when } from "@/lib/api";
+import { api, APP_NAME, APPS, AppEntry, AppKey, howText, isSkill, Plugin, Project, short, tokens, when } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 import type { ConfirmFn } from "@/App";
 import { cn } from "@/lib/utils";
@@ -136,62 +136,6 @@ function Projects({ list, className }: { list: Project[]; className?: string }) 
   </>;
 }
 
-/* 常驻还是按需：按需的从两边卸下，只列在技能库里，模型用到时再读 */
-function LoadMode({ p, busy, run }: { p: Plugin; busy: string | null; run: Run }) {
-  const d = p.demand;
-  if (!d || p.official) return null;
-  const on = !!p.on_demand;
-  const set = (v: boolean) => run(`mode:${p.key}`, () => api.mode(p.key, v), v ? "已改为按需" : "已改为常驻");
-  return (
-    <div className="mt-3 rounded-lg border px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[13px] font-semibold">加载方式</span>
-        <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
-          {[false, true].map((v) => (
-            <button key={String(v)} disabled={!!busy || v === on || (v && !d.ok)} onClick={() => set(v)}
-              className={cn("h-7 rounded-md px-2.5 text-xs font-medium transition-all disabled:cursor-default",
-                v === on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground enabled:hover:bg-background/50 disabled:opacity-50")}>
-              {v ? "按需" : "常驻"}
-            </button>
-          ))}
-        </div>
-        {busy === `mode:${p.key}` && <Spinner />}
-        <span className="flex-1" />
-        {!!p.cost && <span className="text-xs text-muted-foreground">{on ? "每次会话省下" : "每次会话常驻"}约 {tokens(p.cost)} token</span>}
-      </div>
-      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-        {on ? "没装进 app，列在技能库里。模型觉得用得上时，先打开技能库，再读它的 SKILL.md。"
-          : d.ok ? "装在 app 里，每次会话都把技能的名字和说明放进提示。不常用的可以改成按需：从两边卸下，收进技能库，用到时再读。"
-            : `不能改成按需：${d.why}。`}
-      </p>
-      {!!d.lost?.length && (
-        <p className="mt-1.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
-          按需时{d.lost.join("、")}不会生效，它们要装进 app 才能用。{on ? "" : "如果只用得上它的技能，再改成按需。"}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/* 按需的插件或技能：没有各 app 的卡片，换成技能库这一张 */
-function LibraryCard({ p, lib }: { p: Plugin; lib: Library }) {
-  const bad = lib.apps.filter((a) => a.problems.length || a.verify?.ok === false);
-  return (
-    <section className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-4">
-        <h3 className="text-[15px] font-semibold">技能库</h3>
-        {lib.apps.map((a) => <AppChip key={a.app} app={a.app} />)}
-        {bad.length > 0 && <Tag tone="red">要修复</Tag>}
-      </div>
-      <p className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground">
-        {lib.apps.map((a) => APP_NAME[a.app]).join(" 和 ")} 每次会话只加载技能库的一句说明（约 {tokens(lib.cost)} token），里面列着它的名字和用途。模型用到时打开 <code className="break-all font-mono">{lib.folder}</code> 里的目录，再读它的 SKILL.md。
-        {bad.length > 0 && "技能库现在有问题，到首页点修复。"}
-      </p>
-      <Projects list={p.projects ?? []} className="bg-muted/50" />
-    </section>
-  );
-}
-
 /* 锁定状态，以及 ~/.yuwanplugins 里插件文件夹被改过时的提示：锁定保留修改，或者另存一份再还原 */
 function LocalNotice({ p, busy, run, confirm }: { p: Plugin; busy: string | null; run: Run; confirm: ConfirmFn }) {
   const m = p.managed;
@@ -249,8 +193,8 @@ function MissingCard({ p, app, onInstall }: { p: Plugin; app: AppKey; onInstall:
   );
 }
 
-export function PluginView({ p, lib, busy, run, confirm, onAdopt, onInstall }: {
-  p: Plugin; lib: Library; busy: string | null; run: Run; confirm: ConfirmFn; onAdopt: (repo: string) => void; onInstall: (apps: AppKey[]) => void;
+export function PluginView({ p, busy, run, confirm, onAdopt, onInstall }: {
+  p: Plugin; busy: string | null; run: Run; confirm: ConfirmFn; onAdopt: (repo: string) => void; onInstall: (apps: AppKey[]) => void;
 }) {
   const version = p.version || p.apps[0]?.version || "";
   // 插件中心管的 skill，链接被删了也要显示出来，好看到问题
@@ -262,19 +206,22 @@ export function PluginView({ p, lib, busy, run, confirm, onAdopt, onInstall }: {
         <div className="flex flex-wrap items-center gap-2">
           {isSkill(p) && <Tag tone="sky">技能</Tag>}
           {version && <Tag tone="slate" mono>{version}</Tag>}
-          {p.on_demand && <Tag tone="sky">按需</Tag>}
           {p.apps.filter((a) => a.installed).map((a) => <AppChip key={a.app + a.id} app={a.app} />)}
-          {!p.apps.some((a) => a.installed) && <span className="text-xs text-muted-foreground">{p.on_demand ? "在技能库里，用到时再读" : "哪边都没装"}</span>}
+          {!p.apps.some((a) => a.installed) && <span className="text-xs text-muted-foreground">哪边都没装</span>}
         </div>
         {p.description && <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{p.description}</p>}
         {isSkill(p) && (
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            {p.skill?.ours ? <>统一存放在 <code className="break-all font-mono">{p.skill.folder}</code>，{p.on_demand ? "技能库指向这里" : "装了它的 app 都链接到这里"}。改这一份，两边都生效。</>
+            {p.skill?.ours ? <>统一存放在 <code className="break-all font-mono">{p.skill.folder}</code>，装了它的 app 都链接到这里。改这一份，两边都生效。</>
               : p.official ? "Codex 自带的技能，由 Codex 自己管。"
                 : "独立的技能，还不归插件中心管。点右上角的安装，把它装到另一个 app：它会先挪进 ~/.yuwanplugins/skills 统一存放，两边都链接过去。"}
           </p>
         )}
-        <LoadMode p={p} busy={busy} run={run} />
+        {!!p.cost && (
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            每次会话约占 {tokens(p.cost)} token：技能的名字和说明一直放在上下文里，模型看着说明判断什么时候用。
+          </p>
+        )}
         <LocalNotice p={p} busy={busy} run={run} confirm={confirm} />
         {p.managed?.error && !p.managed.modified.length && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-300">上次出错：{p.managed.error}</p>}
         {!p.managed && p.repo && !p.official && (
@@ -283,7 +230,6 @@ export function PluginView({ p, lib, busy, run, confirm, onAdopt, onInstall }: {
           </p>
         )}
       </div>
-      {p.on_demand && <LibraryCard p={p} lib={lib} />}
       {cards.map((a) => <AppCard key={a.app + a.id} p={p} a={a} busy={busy} run={run} confirm={confirm} />)}
       {APPS.filter((x) => p.install[x] && !shown.has(x)).map((x) => <MissingCard key={x} p={p} app={x} onInstall={onInstall} />)}
     </div>

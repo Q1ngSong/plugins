@@ -10,7 +10,6 @@ use crate::bail;
 use crate::claude::{split_id, ClaudeCode};
 use crate::codex::Codex;
 use crate::gitx::*;
-use crate::library;
 use crate::schedule::*;
 use crate::store::*;
 use crate::util::*;
@@ -87,27 +86,6 @@ fn update_one(p: &PluginCfg, m: &mut Map<String, Value>, claude: &ClaudeCode, co
         let short = |s: &Option<String>| s.as_deref().map(|x| x.chars().take(7).collect::<String>()).unwrap_or_else(|| "无".into());
         notes.push(format!("{tag} {} {} → {}：{}", display(&d), short(&old), short(&new), info.map(|c| c.subject).unwrap_or_default()));
     }
-    notes.extend(link_plugin(p, claude, codex, force)?);
-    set(m, "updated_at", stamp());
-    set(m, "checked_at", stamp());
-    set(m, "error", pending.clone().map(Value::from).unwrap_or(Value::Null));
-    if pending.is_none() && !p.locked {
-        // 只记真正从远端拉到的提交，本地提交不能算进去
-        set(m, "commit", new.map(Value::from).unwrap_or(Value::Null));
-    }
-    for n in &notes {
-        log(n);
-    }
-    Ok(notes)
-}
-
-/// 按要装的 app 把受管插件链接进去；按需的不装，只列在技能库里
-fn link_plugin(p: &PluginCfg, claude: &ClaudeCode, codex: &Codex, force: bool) -> R<Vec<String>> {
-    let mut notes = Vec::new();
-    if p.on_demand {
-        return Ok(notes);
-    }
-    let (tag, d) = (format!("[{}]", p.id), repo_dir(p));
     let man = read_manifests(&d, None);
     if p.target("claude") {
         for c in &man.claude_plugins {
@@ -118,6 +96,16 @@ fn link_plugin(p: &PluginCfg, claude: &ClaudeCode, codex: &Codex, force: bool) -
         if let Some(name) = &man.codex_name {
             notes.extend(codex.link(name, &d, force)?.into_iter().map(|n| format!("{tag} Codex：{n}")));
         }
+    }
+    set(m, "updated_at", stamp());
+    set(m, "checked_at", stamp());
+    set(m, "error", pending.clone().map(Value::from).unwrap_or(Value::Null));
+    if pending.is_none() && !p.locked {
+        // 只记真正从远端拉到的提交，本地提交不能算进去
+        set(m, "commit", new.map(Value::from).unwrap_or(Value::Null));
+    }
+    for n in &notes {
+        log(n);
     }
     Ok(notes)
 }
@@ -143,21 +131,7 @@ pub fn op_update(pid: Option<&str>, force: bool) -> R<Vec<String>> {
         }
         save_state(&st)?;
     }
-    // 拉取后技能可能多了少了，技能库的目录跟着变
-    notes.extend(library_refresh());
     Ok(notes)
-}
-
-/// 重新生成技能库，改动写进日志。出错不影响手上的操作，只记一句
-fn library_refresh() -> Vec<String> {
-    let notes = match library::refresh() {
-        Ok(changes) => changes.into_iter().map(|(app, what)| format!("[{}] {}：{what}", library::NAME, app_name(app))).collect(),
-        Err(e) => vec![format!("[{}] 没更新好：{e}", library::NAME)],
-    };
-    for n in &notes {
-        log(n);
-    }
-    notes
 }
 
 pub struct Target {
@@ -170,7 +144,7 @@ pub struct Target {
 /// 插件中心装进两边的每一份：受管插件（按它要装的 app）和移植的副本
 pub fn linked_targets(cfg: &Config) -> Vec<Target> {
     let mut out = Vec::new();
-    for p in cfg.plugins.iter().filter(|p| !p.on_demand) {
+    for p in &cfg.plugins {
         let d = PLUGINS_DIR.join(&p.id);
         if !d.join(".git").exists() {
             continue;
@@ -234,22 +208,6 @@ pub fn op_guard() -> R<Vec<String>> {
         log(&line);
         notes.push(line);
         sub(&mut st, "repairs").insert(format!("{app}:skill:{name}"), json!({"at": stamp(), "what": problems, "ok": ok}));
-    }
-    // 技能库：两边的链接，Claude Code 的读取许可（切换服务商的工具重写 settings.json 时会被冲掉）
-    match library::refresh() {
-        Ok(changes) => {
-            for (app, what) in changes {
-                let line = format!("[{}] {}：{what}（后台检查修复）", library::NAME, app_name(app));
-                log(&line);
-                notes.push(line);
-                sub(&mut st, "repairs").insert(format!("{app}:{}", library::NAME), json!({"at": stamp(), "what": [what], "ok": true}));
-            }
-        }
-        Err(e) => {
-            let line = format!("[{}] 没修好：{e}", library::NAME);
-            log(&line);
-            notes.push(line);
-        }
     }
     st.insert("last_guard".into(), Value::from(stamp()));
     save_state(&st)?;
@@ -353,7 +311,7 @@ pub fn add_plugin(repo: &str, branch: &str, apply: bool, apps: &[String]) -> R<V
         bail!("至少选一个要安装的 app。");
     }
     let branch = validate_branch(&if branch.trim().is_empty() { default_branch(&repo)? } else { branch.to_string() })?;
-    let mut p = PluginCfg { id: pid.clone(), repo: repo.clone(), branch: branch.clone(), targets: None, locked: false, on_demand: false, extra: Map::new() };
+    let mut p = PluginCfg { id: pid.clone(), repo: repo.clone(), branch: branch.clone(), targets: None, locked: false, extra: Map::new() };
     for x in APPS {
         p.set_target(x, apps.iter().any(|a| a == x));
     }
@@ -418,8 +376,9 @@ pub fn ours_root(row: &Value, a: &Value) -> Option<PathBuf> {
 
 /// 真实检查：让装了插件的每个 app 自己确认看得到它的每个 skill，结果记在 state.json。
 ///
-/// 插件中心装的那份还要确认 app 读的正是 ~/.yuwanplugins 里的文件。with_library 为真时连技能库一起查。返回 (通过的, 没通过的)。
-pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool, with_library: bool) -> R<(Vec<String>, Vec<String>)> {
+/// 插件中心装的那份还要确认 app 读的正是 ~/.yuwanplugins 里的文件。渲染过 Codex 的模型提示，就顺带看它的技能清单超没超上限，
+/// 结果记在 state.json 的 codex_skills，首页据此提醒。返回 (通过的, 没通过的, 技能清单超了上限时的说明)。
+pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool) -> R<(Vec<String>, Vec<String>, Option<String>)> {
     let mut st = load_state();
     let (mut claude, mut codex) = (ClaudeCode::new(), Codex::new()); // 同一轮里 Codex 的模型提示只渲染一次
     let (mut good, mut bad) = (Vec::new(), Vec::new());
@@ -446,22 +405,36 @@ pub fn run_verify(rows: &[Value], apps: Option<&[String]>, only_ours: bool, with
             if ok { good.push(line) } else { bad.push(line) }
         }
     }
-    if with_library {
-        for (app, ok, detail) in library::verify(&mut codex, &mut st) {
-            let line = format!("[{}] {} 真实检查{}：{detail}", library::NAME, app_name(app), if ok { "通过" } else { "没通过" });
-            if ok { good.push(line) } else { bad.push(line) }
-        }
-    }
+    let over = if codex.rendered() { record_budget(&mut codex, &mut st) } else { None };
     save_state(&st)?;
     for n in good.iter().chain(bad.iter()) {
         log(n);
     }
-    Ok((good, bad))
+    Ok((good, bad, over))
+}
+
+/// 看 Codex 的技能清单超没超上限，记进 state 和日志。返回超了时的说明
+fn record_budget(codex: &mut Codex, st: &mut State) -> Option<String> {
+    let (ok, detail) = codex.budget().unwrap_or_else(|e| (false, format!("检查时出错：{e}")));
+    st.insert("codex_skills".into(), json!({"ok": ok, "detail": detail, "at": stamp()}));
+    let line = format!("[技能清单] Codex：{detail}");
+    log(&line);
+    (!ok).then_some(line)
+}
+
+/// 只看 Codex 的技能清单：删掉用不上的插件或技能以后，不用等后台检查就能再看一次
+fn act_budget() -> R<Vec<String>> {
+    let mut st = load_state();
+    let mut codex = Codex::new();
+    codex.prompt_text()?; // 渲染不出来（比如找不到 codex.exe）就直接报错，不记进状态
+    let line = record_budget(&mut codex, &mut st);
+    save_state(&st)?;
+    Ok(vec![line.unwrap_or_else(|| format!("[技能清单] Codex：{}", gs(&st["codex_skills"], "detail")))])
 }
 
 /// 对一个插件做真实检查。strict 为真时，有没通过的就报错（装完插件时用）。
 pub fn verify_plugin(key: &str, apps: Option<&[String]>, strict: bool) -> R<Vec<String>> {
-    let (mut good, bad) = run_verify(&[find_row(key)?], apps, false, false)?;
+    let (mut good, bad, _) = run_verify(&[find_row(key)?], apps, false)?;
     if strict && !bad.is_empty() {
         bail!("装好了，但真实检查没通过：\n{}", bad.join("\n"));
     }
@@ -469,10 +442,11 @@ pub fn verify_plugin(key: &str, apps: Option<&[String]>, strict: bool) -> R<Vec<
     Ok(good)
 }
 
-/// 对插件中心装的每一份和技能库做真实检查（检查更新和后台检查时用），只把没通过的列出来
+/// 对插件中心装的每一份做真实检查（检查更新和后台检查时用），只把没通过的列出来；Codex 的技能清单超了上限也列出来
 pub fn verify_ours() -> R<Vec<String>> {
     let state = build_state()?;
-    let (good, bad) = run_verify(ga(&state, "plugins"), None, true, true)?;
+    let (good, mut bad, over) = run_verify(ga(&state, "plugins"), None, true)?;
+    bad.extend(over);
     if !bad.is_empty() {
         return Ok(bad);
     }
@@ -674,56 +648,6 @@ pub fn act_sync(body: &Value) -> R<Vec<String>> {
     Ok(notes)
 }
 
-/// 常驻还是按需。按需的从两边卸下，只列在技能库里，模型用到时再读；插件文件夹和要装的 app 都留着，改回常驻时照原样装回去。
-pub fn act_mode(body: &Value) -> R<Vec<String>> {
-    let row = find_row(gs(body, "key"))?;
-    let on = gb(body, "on_demand");
-    if on && !gb(&row["demand"], "ok") {
-        bail!("{} 不能改成按需：{}", gs(&row, "name"), gs(&row["demand"], "why"));
-    }
-    let mut notes = if gs(&row, "kind") == "skill" { crate::skills::set_on_demand(&row, on)? } else { plugin_mode(&row, on)? };
-    notes.extend(library_refresh());
-    // 按需的查技能库在不在、按需的技能是不是真的不在提示里了；改回常驻的查装回去的那份
-    let (good, bad) = if on { run_verify(&[], None, false, true)? } else { run_verify(&[find_row(gs(&row, "key"))?], None, false, false)? };
-    notes.extend(good.into_iter().chain(bad));
-    Ok(notes)
-}
-
-fn plugin_mode(row: &Value, on: bool) -> R<Vec<String>> {
-    let Some(m) = row.get("managed").filter(|m| m.is_object()) else {
-        bail!("{} 还不归插件中心管。先点安装，交给插件中心管理。", gs(row, "name"));
-    };
-    let mut cfg = load_config();
-    let p = find_managed(&mut cfg, gs(m, "id"))?;
-    if p.on_demand == on {
-        return Ok(Vec::new());
-    }
-    p.on_demand = on;
-    let p = p.clone();
-    save_config(&cfg)?;
-    let (claude, codex) = (ClaudeCode::new(), Codex::new());
-    let tag = format!("[{}]", p.id);
-    let mut notes = vec![format!("{tag} 改为{}", if on { "按需：从两边卸下，列进技能库，用到时再读" } else { "常驻：装回两边" })];
-    if on {
-        for a in ga(row, "apps").iter().filter(|a| gb(a, "installed") && a.get("state").is_some()) {
-            let (app, id) = (gs(a, "app"), gs(a, "id"));
-            if app == "claude" {
-                claude.remove(id)?;
-            } else {
-                codex.remove(id)?;
-                codex.forget(split_id(id).0)?;
-            }
-            notes.push(format!("{tag} {}：卸下了 {id}", app_name(app)));
-        }
-    } else {
-        notes.extend(link_plugin(&p, &claude, &codex, false)?);
-    }
-    for n in &notes {
-        log(n);
-    }
-    Ok(notes)
-}
-
 /// 锁定：不再检查、不再拉取更新，插件文件夹里的修改保留；链接被改坏了照样修。解锁后恢复。
 pub fn act_lock(body: &Value) -> R<Vec<String>> {
     let mut cfg = load_config();
@@ -785,18 +709,8 @@ pub fn open_target(target: &str) -> R<()> {
     bail!("只能打开插件中心的文件夹或网页链接。")
 }
 
-/// 技能库自己的同步和检查：重新生成、补上链接和读取许可，再做真实检查
-fn library_action(name: &str) -> R<Vec<String>> {
-    let mut notes = if name == "sync" { library_refresh() } else { Vec::new() };
-    let (good, bad) = run_verify(&[], None, false, true)?;
-    notes.extend(good.into_iter().chain(bad));
-    Ok(notes)
-}
-
 fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
-    let result = match name {
-        "sync" | "verify" if gs(body, "key") == "library" => library_action(name),
-        "mode" => act_mode(body),
+    Some(match name {
         "check" => op_check(),
         "update" => {
             let plugin = gs(body, "plugin");
@@ -824,13 +738,9 @@ fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
         "guard" => set_guard(gb(body, "enabled")),
         "lock" => act_lock(body),
         "save" => act_save(body),
+        "budget" => act_budget(),
         _ => return None,
-    };
-    // 装、删、同步都可能让按需的技能变了，技能库的目录跟着变
-    Some(result.map(|mut notes| {
-        notes.extend(library_refresh());
-        notes
-    }))
+    })
 }
 
 /// 页面和命令行共用的接口：name 是接口名（state、check、update…），返回 (HTTP 状态码, JSON)
