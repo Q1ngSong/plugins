@@ -4,6 +4,7 @@
 //! - Claude Code：~/.claude/skills/<名字> 是指向它的目录链接，Claude Code 就地加载成 <名字>@skills-dir。
 //! - Codex：个人插件源指向它；Codex 只认真实的缓存文件夹，所以正常装一份后，
 //!   把缓存里的子文件夹换成指向它的链接（清单文件照原样复制）。
+//!
 //! 拉取后两边直接用上，不用重装；两边的"版本"就是这份克隆的提交号。
 //! 不要在 ~/.yuwanplugins 里改插件：有修改时同步会停下来，提示锁定或另存。
 //!
@@ -15,6 +16,7 @@ mod cli;
 mod codex;
 mod gitx;
 mod ops;
+mod platform;
 mod schedule;
 mod server;
 mod skills;
@@ -60,12 +62,12 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--run") {
         // 常驻的后台进程不接控制台：接上了，关掉那个终端窗口它就会被一起关掉
         if !matches!(args.get(2).map(String::as_str), Some("daemon" | "auto")) {
-            util::attach_console();
+            platform::attach_console();
         }
         let files = embedded_files(&context);
         std::process::exit(cli::run_cli(&args[2..], files));
     }
-    schedule::ensure_daemon();
+    schedule::ensure_background();
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![api])
         .setup(|app| {

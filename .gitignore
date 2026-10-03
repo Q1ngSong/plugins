@@ -21,3 +21,7 @@ CLAUDE.md
 
 # Python 运行测试时可能留下的缓存
 __pycache__/
+
+# dclh 的 codegraph 索引和由 .comment-standard.json 派生的配置
+pluginhub/.codegraph/
+pluginhub/codegraph.json

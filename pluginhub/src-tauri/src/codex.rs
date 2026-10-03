@@ -9,6 +9,7 @@ use serde_json::{json, Map, Value};
 use crate::claude::split_id;
 use crate::gitx::{backup, ours};
 use crate::skills::read_front;
+use crate::platform::{self, CODEX_EXE};
 use crate::util::*;
 
 pub fn codex_version(folder: &Path) -> String {
@@ -44,7 +45,7 @@ pub fn mirror(cache: &Path, folder: &Path) -> R<bool> {
         if src.is_dir() && n != ".codex-plugin" {
             if !links_to(&dst, &src) {
                 remove_path(&dst)?;
-                make_junction(&dst, &src)?;
+                make_link(&dst, &src)?;
                 changed = true;
             }
         } else if src.is_dir() {
@@ -121,11 +122,11 @@ pub struct Codex {
 
 impl Codex {
     pub fn new() -> Self {
-        Self { exe: find_codex(), listed: None, prompt: None }
+        Self { exe: platform::find_codex(), listed: None, prompt: None }
     }
 
     fn exe_str(&self) -> R<String> {
-        self.exe.as_ref().map(|p| p.to_string_lossy().to_string()).ok_or_else(|| HubError::Msg("找不到 Codex 的命令行 codex.exe。".into()))
+        self.exe.as_ref().map(|p| p.to_string_lossy().to_string()).ok_or_else(|| HubError::Msg(format!("找不到 Codex 的命令行 {CODEX_EXE}。")))
     }
 
     pub fn cli(&self, args: &[&str]) -> R<String> {
@@ -203,8 +204,8 @@ impl Codex {
             return Ok((false, format!("模型提示里有 {} 个 skill 的文件打不开：{}", broken.len(), shown.join("、"))));
         }
         if let Some(root) = root {
-            let base = norm(root) + "\\";
-            let outside = seen.iter().filter(|(_, f)| !norm(Path::new(f)).starts_with(&base)).count();
+            // 它写的可能是缓存里链接的路径，解析完链接再看是不是我们的文件夹
+            let outside = seen.iter().filter(|(_, f)| !under_real(Path::new(f), root)).count();
             if outside > 0 {
                 return Ok((false, format!("Codex 读的不是 {} 里的文件（{outside} 个 skill 读的是缓存里的旧副本）", display(root))));
             }
@@ -225,7 +226,7 @@ impl Codex {
             return Ok((false, format!("模型提示里 {name} 指向的 {file} 打不开")));
         }
         if let Some(root) = root {
-            if !norm(Path::new(&file)).starts_with(&(norm(root) + "\\")) {
+            if !under_real(Path::new(&file), root) {
                 return Ok((false, format!("Codex 读的是 {file}，不是 {} 里的那份", display(root))));
             }
         }
@@ -293,8 +294,8 @@ impl Codex {
     pub fn unlink_cache(d: &Path) {
         if let Ok(rd) = fs::read_dir(d) {
             for p in rd.flatten() {
-                if is_junction(&p.path()) {
-                    let _ = fs::remove_dir(p.path());
+                if platform::is_link(&p.path()) {
+                    let _ = platform::remove_link(&p.path());
                 }
             }
         }
@@ -359,10 +360,27 @@ impl Codex {
         })
     }
 
-    /// 个人插件源指向插件文件夹；没装或版本号变了就正常装一份，再把缓存里的子文件夹换成链接
+    /// 同名插件从别的插件源装的副本（官方自带的不算）
+    pub fn copies(&self, name: &str) -> Vec<String> {
+        let mine = Self::marketplace_name();
+        Self::configured()
+            .into_iter()
+            .filter(|cid| {
+                let (n, mkt) = split_id(cid);
+                n == name && mkt != mine && !mkt.starts_with("openai-")
+            })
+            .collect()
+    }
+
+    /// 个人插件源指向插件文件夹；没装或版本号变了就正常装一份，再把缓存里的子文件夹换成链接。
+    /// 以前从别的插件源装的同名副本一并卸掉，免得模型提示里每个 skill 列两遍。
     pub fn link(&self, name: &str, folder: &Path, force: bool) -> R<Vec<String>> {
         let mut notes = Vec::new();
         let cid = format!("{name}@{}", Self::marketplace_name());
+        for old in self.copies(name) {
+            self.remove(&old)?;
+            notes.push(format!("卸载按插件源装的副本 {old}，改为链接"));
+        }
         if let Some(old) = self.set_entry(name, folder)? {
             if old.exists() && !ours(Some(&old)) {
                 notes.push(format!("旧的源文件夹备份到 {}", display(&backup(&old, name)?)));
@@ -461,7 +479,7 @@ fn relative_to_home(folder: &Path) -> String {
             let common = fc.iter().zip(hc.iter()).take_while(|(a, b)| a == b).count();
             let mut parts: Vec<String> = vec!["..".to_string(); hc.len() - common];
             parts.extend(fc[common..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()));
-            parts.join("\\")
+            parts.join("/")
         }
     }
 }
@@ -470,7 +488,8 @@ fn relative_to_home(folder: &Path) -> String {
 mod tests {
     use super::*;
 
-    /// 清单放不下时的样子（照 Codex 0.139 渲染出来的格式）：路径缩写成 r0/…，说明截短，再不够就只剩名字
+    /// 清单放不下时的样子（照 Codex 0.139 渲染出来的格式）：路径缩写成 r0/…，说明截短，再不够就只剩名字。
+    /// macOS 上的 Codex 0.159 格式一样，只是路径是 /Users/… 开头
     const SHORT: &str = "<skills_instructions>\n## Skills\n### Skill roots\n- `r0` = `C:/Users/a/.codex/skills`\n- `r1` = `C:/Users/a/.yuwanplugins/dclh/skills`\n\
 ### Available skills\n- autoresearch: Autonomous iterative experimentation loop for any programming task (file: r0/autoresearch/SKILL.md)\n\
 - dclh:writing-minimal-code: (file: r1/writing-minimal-code/SKILL.md)\n- pdf:pdf: Read PDF files (file: C:/x/pdf/SKILL.md)\n</skills_instructions>\n- not: a skill (file: elsewhere)\n";

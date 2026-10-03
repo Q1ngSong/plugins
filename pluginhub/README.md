@@ -16,34 +16,52 @@ src-tauri/src/          程序（Rust，Tauri 2）
   skills.rs             独立的技能：扫描两边的 skills 文件夹、统一存放、链接、删除、检查
   gitx.rs               git：克隆、拉取、本地修改检测、读清单、备份
   usage.rs              扫描两边的会话记录，统计哪些项目用过插件
-  schedule.rs           后台任务：计划任务，建不了就用「启动」文件夹加常驻进程
+  schedule.rs           后台任务：设置、状态、常驻后台进程的锁；系统任务怎么建交给 platform/
   server.rs             浏览器版的页面服务：只听 127.0.0.1，校验 Host 和令牌
-  util.rs               路径、日志、JSON、目录链接、子进程、锁
-scripts/build-app.ps1   本机打安装包
+  util.rs               路径、日志、JSON、目录链接、子进程、锁（平台无关）
+  platform/             平台层：和系统打交道的都在这里，别的模块不写 #[cfg]
+    mod.rs              两个实现共同提供的函数清单，按编译目标选一个
+    windows.rs          junction、计划任务和「启动」文件夹、不弹黑框、OEM 解码、找 claude.exe 和 codex.exe
+    macos.rs            符号链接、launchd、登录 shell 的 PATH、open、找 claude 和 codex
+src-tauri/tauri.conf.json         Tauri 的公共设置
+src-tauri/tauri.windows.conf.json 只在 Windows 上合并进来：NSIS 安装包
+src-tauri/tauri.macos.conf.json   只在 macOS 上合并进来：.app 和 .dmg、临时签名
+scripts/build-app.ps1   Windows 本机打安装包
+scripts/build-app.sh    macOS 本机打 .app 和 .dmg
 scripts/e2e.py          端到端测试
 ```
 
 ## 构建
 
-需要 Node.js、pnpm 和 Rust（版本见 `rust-toolchain.toml`）。
+需要 Node.js、pnpm 和 Rust（版本见 `rust-toolchain.toml`）。Windows 和 macOS 都能构建，命令一样：
 
-```powershell
+```sh
 pnpm install
 pnpm build:renderer
-cd src-tauri; cargo build --release
+cd src-tauri && cargo build --release
 ```
 
-页面构建到 `dist/`，打包时嵌进 exe；程序在 `src-tauri/target/release/pluginhub.exe`。
+页面构建到 `dist/`，打包时嵌进程序；程序在 `src-tauri/target/release/pluginhub`（Windows 上是 `pluginhub.exe`）。
 
 打安装包：
 
 ```powershell
+# Windows：NSIS 安装包，复制到 out/PluginHub_<版本>_x64-setup.exe
 powershell -ExecutionPolicy Bypass -File scripts\build-app.ps1
 ```
 
-安装包在 `out/PluginHub_<版本>_x64-setup.exe`。
+```sh
+# macOS：.app 在 src-tauri/target/release/bundle/macos/插件中心.app，dmg 复制到 out/PluginHub_<版本>_<arch>.dmg
+bash scripts/build-app.sh
+```
 
-改了后端要重新构建 exe。构建前先停掉在跑的 `pluginhub.exe --run daemon`，它占着 exe 文件。
+改了后端要重新构建程序。构建前先停掉在跑的 `pluginhub --run daemon`（Windows 上它占着 exe 文件）。
+
+macOS 的 .app 只做了临时签名（ad-hoc），本机构建的能直接打开；发给别人要过 Gatekeeper，见仓库首页 README 的安装一节。
+
+## 平台相关的代码
+
+和操作系统打交道的代码只在 `src-tauri/src/platform/` 里：`windows.rs` 和 `macos.rs` 提供同一套函数（清单在 `mod.rs` 开头），`mod.rs` 按编译目标选一个，其余模块只写 `platform::xxx`，不写 `#[cfg]`。要支持新系统（比如 Linux），照着 `macos.rs` 写一个 `linux.rs`（符号链接和 PATH 的做法一样，`open` 换成 `xdg-open`，launchd 换成 systemd 的用户定时器），在 `mod.rs` 里加两行，再加一个 `tauri.linux.conf.json` 和 CI 里的一个 job 就够了。
 
 ## 测试
 
@@ -53,17 +71,21 @@ powershell -ExecutionPolicy Bypass -File scripts\build-app.ps1
 cd src-tauri; cargo test
 ```
 
-`scripts/e2e.py` 是端到端测试，要本机有 Python。它用一个本地 git 仓库当远端，通过 `pluginhub.exe --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。真实检查有没有顺带记下 Codex 的技能清单，单独重新检查能不能用，也一并看。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
+`scripts/e2e.py` 是端到端测试，要本机有 Python，Windows 和 macOS 都能跑。它用一个本地 git 仓库当远端，通过 `pluginhub --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。真实检查有没有顺带记下 Codex 的技能清单，单独重新检查能不能用，也一并看。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
 
 ```powershell
 python scripts\e2e.py
+```
+
+```sh
+python3 scripts/e2e.py   # macOS；程序不在默认位置时用环境变量 PLUGINHUB_EXE 指定
 ```
 
 ## 发布
 
 版本号在四个地方：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`，还有 `src-tauri/src/util.rs` 里的 `HUB_VERSION`。
 
-打一个 `v1.2.0` 这样的 tag 推到 GitHub，Actions（`.github/workflows/release.yml`）会构建安装包，改成英文文件名，建一个草稿 Release。检查过后，在网页上点 Publish。
+打一个 `v1.2.0` 这样的 tag 推到 GitHub，Actions（`.github/workflows/release.yml`）会在 Windows 和 macOS 上各构建一份（NSIS 安装包、通用的 dmg），改成英文文件名，建一个草稿 Release。检查过后，在网页上点 Publish。
 
 ## 插图
 

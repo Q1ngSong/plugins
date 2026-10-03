@@ -96,7 +96,7 @@ pub fn ensure_clone(p: &PluginCfg) -> R<PathBuf> {
     }
     fs::create_dir_all(&*PLUGINS_DIR)?;
     log(&format!("[{}] 克隆 {}（{} 分支）", p.id, p.repo, p.branch));
-    // 保持仓库里的换行符原样：插件里的 bash 钩子遇到 CRLF 会跑不起来
+    // 保持仓库里的换行符原样：插件里的 bash 钩子遇到 CRLF 会跑不起来。longpaths 只对 Windows 有意义，别的系统 git 会忽略
     let ds = display(&d);
     git_t(
         &["-c", "core.autocrlf=false", "-c", "core.longpaths=true", "clone", "--branch", &p.branch, &p.repo, &ds],
@@ -178,7 +178,7 @@ pub fn remote_branches(d: &Path) -> Vec<String> {
     let mut names: Vec<String> = out
         .split_whitespace()
         .filter(|x| x.contains('/') && !x.ends_with("/HEAD"))
-        .map(|x| x.splitn(2, '/').nth(1).unwrap_or("").to_string())
+        .map(|x| x.split_once('/').map(|(_, name)| name).unwrap_or("").to_string())
         .collect();
     names.sort();
     names.dedup();
@@ -278,8 +278,7 @@ pub fn read_manifests(d: &Path, rev: Option<&str>) -> Manifest {
 /// 这个路径是不是在插件中心自己的插件文件夹里（新旧位置都算）
 pub fn ours(path: Option<&Path>) -> bool {
     let Some(path) = path.filter(|p| !p.as_os_str().is_empty()) else { return false };
-    let p = norm(path);
-    [&*PLUGINS_DIR, &*LEGACY_REPOS_DIR].iter().any(|root| p.starts_with(&(norm(root) + "\\")))
+    [&*PLUGINS_DIR, &*LEGACY_REPOS_DIR].iter().any(|root| under(path, root))
 }
 
 pub fn backup(path: &Path, name: &str) -> R<PathBuf> {

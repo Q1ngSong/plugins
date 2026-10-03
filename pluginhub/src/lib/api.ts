@@ -36,11 +36,11 @@ export interface AppEntry {
  * 还没装的 app 能怎么装：native 直接装；adopt 先交给插件中心管理；port 移植 skill；
  * 独立的 skill 用 link（链接到统一存放的那份）和 move（先挪进统一存放的地方）；null 装不了（why 是原因）
  */
-export interface InstallOption { how: "native" | "adopt" | "port" | "link" | "move" | null; from?: AppKey; why?: string }
+interface InstallOption { how: "native" | "adopt" | "port" | "link" | "move" | null; from?: AppKey; why?: string }
 
-export interface Commit { sha: string; short: string; subject: string; date: string }
+interface Commit { sha: string; short: string; subject: string; date: string }
 
-export interface Managed {
+interface Managed {
   id: string;
   repo: string;
   web: string;
@@ -90,12 +90,15 @@ export function howText(o: InstallOption): string {
   return o.why ?? "装不了";
 }
 
-export interface AutoUpdate { enabled: boolean; interval_minutes: number; installed: boolean; mode: string | null; next_run?: string }
+interface AutoUpdate { enabled: boolean; interval_minutes: number; installed: boolean; mode: string | null; next_run?: string }
 
 export interface State {
   generated_at: string;
   hub: {
-    version: string; home: string; plugins_dir: string; auto: AutoUpdate; last_auto: { at: string; notes: string[] } | null;
+    version: string;
+    /** 程序跑在哪个系统上：windows、macos、linux */
+    os: string;
+    home: string; plugins_dir: string; saved_dir: string; auto: AutoUpdate; last_auto: { at: string; notes: string[] } | null;
     /** 后台检查：定时看两边的插件配置有没有被改掉 */
     guard: { enabled: boolean; last: string | null };
     /** 后台任务实际运行的命令（装了桌面版就是它的 exe） */
@@ -107,6 +110,11 @@ export interface State {
   plugins: Plugin[];
   log: string[];
 }
+
+/** 两边命令行的文件名：Windows 上带 .exe */
+export const exeName = (state: State, app: AppKey) => (state.hub.os === "windows" ? `${app}.exe` : app);
+/** 系统定时任务在这个系统上叫什么 */
+export const taskKind = (state: State) => (state.hub.os === "macos" ? "launchd 任务" : "系统定时任务");
 
 export interface Branch {
   name: string; sha: string; date: string; subject: string; default: boolean;

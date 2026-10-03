@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/common/bits";
-import { api, State, when } from "@/lib/api";
+import { api, exeName, State, taskKind, when } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 
 const INTERVALS: [number, string][] = [[15, "每 15 分钟"], [30, "每 30 分钟"], [60, "每小时"], [360, "每 6 小时"], [1440, "每天"]];
@@ -21,7 +21,7 @@ export function SettingsView({ state, busy, run }: { state: State; busy: string 
   const on = !!(auto.enabled && auto.installed);
   const minutes = auto.interval_minutes || 60;
   const open = (target: string) => api.open(target).catch((e) => toast.error("打不开", { description: String(e.message ?? e) }));
-  const tools: [string, string][] = [["Claude Code（claude.exe）", state.tools.claude], ["Codex（codex.exe）", state.tools.codex], ["git", state.tools.git]];
+  const tools: [string, string][] = [[`Claude Code（${exeName(state, "claude")}）`, state.tools.claude], [`Codex（${exeName(state, "codex")}）`, state.tools.codex], ["git", state.tools.git]];
 
   const guard = state.hub.guard;
   return (
@@ -49,7 +49,7 @@ export function SettingsView({ state, busy, run }: { state: State; busy: string 
           {busy === "auto" && <Spinner />}
         </div>
         <div className="mt-2 text-xs text-muted-foreground">
-          {on ? `${auto.mode === "startup" ? "开机自启的后台进程" : "系统定时任务"} · 下次检查 ${auto.next_run || "—"}` : "关闭时只在你点同步或检查更新时才更新"}
+          {on ? `${auto.mode === "startup" ? "开机自启的后台进程" : taskKind(state)} · 下次检查 ${auto.next_run || "—"}` : "关闭时只在你点同步或检查更新时才更新"}
           {state.hub.last_auto && ` · 上次自动检查 ${when(state.hub.last_auto.at)}`}
         </div>
         <div className="mt-3 flex gap-2">
@@ -61,7 +61,7 @@ export function SettingsView({ state, busy, run }: { state: State; busy: string 
       <Card title="文件位置">
         <div className="flex flex-col gap-2 text-[13px]">
           {([["插件文件夹（两边都链接到这里，不要在这里改插件）", state.hub.plugins_dir, "plugins_dir"],
-            ["另存的修改（另存并还原时存到这里）", `${state.hub.home}\\saved`, "saved_dir"],
+            ["另存的修改（另存并还原时存到这里）", state.hub.saved_dir, "saved_dir"],
             ["插件中心的配置、日志和备份", state.hub.home, "hub_dir"]] as const).map(([k, v, t]) => (
             <div key={t} className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2">
               <div className="min-w-0 flex-1">

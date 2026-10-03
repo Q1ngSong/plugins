@@ -15,6 +15,7 @@ use crate::bail;
 use crate::gitx::backup;
 use crate::store::*;
 use crate::usage::{merge_projects, project_rows, Usage};
+use crate::platform;
 use crate::util::*;
 
 /// 插件中心管理的 skill 放在这里，每个一个文件夹
@@ -176,8 +177,8 @@ fn scan_dir(app: &'static str, dir: &Path, official: bool, out: &mut Vec<Found>)
         if front.name.is_empty() {
             front.name = name.clone();
         }
-        let linked = is_junction(&path);
-        let target = if linked { link_target(&path).unwrap_or_else(|| path.clone()) } else { path.clone() };
+        let linked = platform::is_link(&path);
+        let target = if linked { platform::link_target(&path).unwrap_or_else(|| path.clone()) } else { path.clone() };
         out.push(Found { app, dir: name, path, target, linked, official, front });
     }
 }
@@ -353,11 +354,11 @@ fn adopt(row: &Value, dir: &str, notes: &mut Vec<String>) -> R<PathBuf> {
     }
     fs::create_dir_all(&*SKILLS_DIR)?;
     move_path(&paths[0], &dest)?;
-    make_junction(&paths[0], &dest)?;
+    make_link(&paths[0], &dest)?;
     notes.push(format!("{} 挪到 {} 统一存放，原来的位置换成链接", display(&paths[0]), display(&dest)));
     for (c, p) in copies.iter().zip(&paths).skip(1) {
         let kept = backup(p, &backup_name(dir))?;
-        make_junction(p, &dest)?;
+        make_link(p, &dest)?;
         notes.push(format!("{} 里一样的那份挪进备份 {}，换成链接", app_name(gs(c, "app")), display(&kept)));
     }
     Ok(dest)
@@ -386,7 +387,7 @@ pub fn install(row: &Value, apps: &[String]) -> R<Vec<String>> {
     }
     for app in apps {
         let link = app_dir(app).join(&dir);
-        if make_junction(&link, &ours)? {
+        if make_link(&link, &ours)? {
             notes.push(format!("{}：链接 {} → {}", app_name(app), display(&link), display(&ours)));
         }
         cfg.skills[i].targets.insert(app.clone(), true);
@@ -407,8 +408,8 @@ pub fn uninstall_app(row: &Value, app: &str) -> R<Vec<String>> {
     let dir = gs(&row["skill"], "dir").to_string();
     let path = PathBuf::from(gs(a, "path"));
     let mut notes = Vec::new();
-    if is_junction(&path) {
-        fs::remove_dir(&path)?;
+    if platform::is_link(&path) {
+        platform::remove_link(&path)?;
         notes.push(format!("{}：去掉了链接 {}", app_name(app), display(&path)));
     } else if path.exists() {
         let kept = backup(&path, &backup_name(&dir))?;
@@ -463,7 +464,7 @@ pub fn sync(row: &Value) -> R<Vec<String>> {
     for (app, on) in &s.targets {
         if *on {
             let link = app_dir(app).join(&s.dir);
-            if make_junction(&link, &ours)? {
+            if make_link(&link, &ours)? {
                 notes.push(format!("{}：重新链接 {} → {}", app_name(app), display(&link), display(&ours)));
             }
         }
@@ -485,14 +486,14 @@ pub fn guard() -> Vec<(String, String, Vec<String>, bool)> {
             if !*on || links_to(&link, &ours) {
                 continue;
             }
-            let mut problems = vec![if is_junction(&link) {
+            let mut problems = vec![if platform::is_link(&link) {
                 format!("{} 指向了别处", display(&link))
             } else if link.exists() {
                 format!("{} 是个真实的文件夹，不是链接", display(&link))
             } else {
                 format!("{} 这个链接不见了", display(&link))
             }];
-            let ok = match make_junction(&link, &ours) {
+            let ok = match make_link(&link, &ours) {
                 Ok(_) => true,
                 Err(e) => {
                     problems.push(format!("修复失败：{e}"));

@@ -1,9 +1,10 @@
-"""端到端测试：通过 pluginhub.exe --run api 调用接口，覆盖添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载，
+"""端到端测试：通过 pluginhub --run api（Windows 上是 pluginhub.exe）调用接口，覆盖添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载，
 独立 skill 的收编、两边链接、修复和删除，以及真实检查顺带看的 Codex 技能清单。
 用本地 git 仓库当远端，不碰 dclh。会真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件和一个测试 skill，
-测完会卸掉并清理干净，最后核对两边的配置和测试前一样。
+测完会卸掉并清理干净，关掉测试里开的后台检查，最后核对两边的配置和测试前一样。
 
-先构建 exe（cargo build --release），再运行：python scripts/e2e.py
+先构建程序（cargo build --release），再运行：python scripts/e2e.py
+（Windows 和 macOS 都能跑；程序不在默认位置时用环境变量 PLUGINHUB_EXE 指定）
 """
 import json
 import os
@@ -14,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-EXE = Path(__file__).resolve().parents[1] / "src-tauri" / "target" / "release" / "pluginhub.exe"
+EXE = Path(os.environ.get("PLUGINHUB_EXE") or Path(__file__).resolve().parents[1] / "src-tauri" / "target" / "release" / ("pluginhub.exe" if os.name == "nt" else "pluginhub"))
 HOME = Path.home()
 HUB_DIR = HOME / ".pluginhub"
 PLUGINS_DIR = HOME / ".yuwanplugins"
@@ -32,10 +33,18 @@ ID = "yp-e2e"
 failed = False
 
 
-ENV = {**os.environ, "PLUGINHUB_NO_OPEN": "1"}  # 另存并还原时不弹出资源管理器
+ENV = {**os.environ, "PLUGINHUB_NO_OPEN": "1"}  # 另存并还原时不弹出资源管理器（访达）
 
 
 def api(name, body=None):
+    """调用 pluginhub 的 api 接口，返回它打印的 JSON。[基础设施]
+
+    Args:
+        name: 接口名，比如 state、add、guard
+        body: 接口参数，None 当作 {}
+    Returns:
+        dict — 接口输出的 JSON；进程退出码不为 0 时打印错误，照样返回
+    """
     r = subprocess.run([str(EXE), "--run", "api", name, json.dumps(body or {})], capture_output=True, text=True,
                        encoding="utf-8", env=ENV)
     out = r.stdout.strip().splitlines()
@@ -46,25 +55,58 @@ def api(name, body=None):
 
 
 def notes_of(name, body=None):
+    """调用接口，只取返回里的 notes。[基础设施]
+
+    Args:
+        name: 接口名
+        body: 接口参数，None 当作 {}
+    Returns:
+        list[str] — notes，没有就是空列表
+    """
     return api(name, body).get("notes") or []
 
 
 def git(*args, cwd=src):
+    """在 cwd 里跑一条 git 命令，带固定的测试用身份。[基础设施]
+
+    Args:
+        *args: git 的子命令和参数
+        cwd: 仓库目录，默认是测试用的源仓库
+    Returns:
+        str — 标准输出去掉首尾空白；命令失败直接抛 CalledProcessError
+    """
     return subprocess.run([g, "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, check=True,
                           capture_output=True, text=True).stdout.strip()
 
 
 def commit_remote(msg, text):
+    """往测试远端提交一版 hello skill 的新内容。[基础设施]
+
+    Args:
+        msg: 提交说明
+        text: 写进 SKILL.md 正文的内容
+    """
     (src / "skills" / "hello" / "SKILL.md").write_text(f"---\nname: hello\ndescription: e2e skill\n---\n{text}\n")
     git("commit", "-am", msg)
     git("push", "origin", "main")
 
 
 def row():
+    """state 里 yp-e2e 这一行。[基础设施]
+
+    Returns:
+        dict — 插件行；找不到直接抛 StopIteration
+    """
     return next(r for r in api("state")["plugins"] if r["key"] == ID)
 
 
 def check(label, ok):
+    """打印 PASS 或 FAIL，记下有没有失败过。[基础设施]
+
+    Args:
+        label: 这一项检查的名字
+        ok: 真就是通过
+    """
     global failed
     print(("PASS " if ok else "FAIL ") + label)
     if not ok:
@@ -72,18 +114,51 @@ def check(label, ok):
 
 
 def rmtree(p):
+    """删掉整个目录，.git 里的只读文件也删。[基础设施]
+
+    Args:
+        p: 目录路径，不存在就什么都不做
+    """
     if p.exists():
         shutil.rmtree(p, onerror=lambda f, x, e: (os.chmod(x, 0o666), f(x)))
 
 
 def is_link_to(link, target):
+    """link 是不是指向 target 的目录链接。[基础设施]
+
+    Args:
+        link: 链接路径，不是链接返回 False
+        target: 期望指向的目录
+    Returns:
+        bool
+
+    变更: 2026-10-03 相对路径的链接按链接所在目录解析，绝对路径的照旧。
+    """
     try:
         t = os.readlink(link)
     except OSError:
         return False
     t = t.removeprefix("\\\\?\\")
+    if not os.path.isabs(t):  # 别的程序建的符号链接可能是相对路径
+        t = os.path.join(os.path.dirname(link), t)
     return os.path.normcase(os.path.abspath(t)) == os.path.normcase(os.path.abspath(target))
 
+
+def remove_link(p):
+    """只删目录链接本身，不碰它指向的文件夹。[基础设施]
+
+    Windows 的 junction 用 rmdir，macOS 的符号链接用 unlink。
+
+    Args:
+        p: 链接路径
+    """
+    if os.name == "nt":
+        os.rmdir(p)
+    else:
+        os.unlink(p)
+
+
+GUARD_BEFORE = bool(((api("state").get("hub") or {}).get("guard") or {}).get("enabled"))
 
 rmtree(work)
 (src / ".claude-plugin").mkdir(parents=True)
@@ -97,7 +172,7 @@ git("add", ".")
 git("commit", "-m", "v1")
 subprocess.run([g, "clone", "--bare", str(src), str(bare)], check=True, capture_output=True)
 git("remote", "add", "origin", str(bare))
-url = "file:///" + str(bare).replace("\\", "/")
+url = "file:///" + str(bare).replace("\\", "/").lstrip("/")
 folder = PLUGINS_DIR / ID
 
 # 0. 查询仓库
@@ -163,7 +238,7 @@ text = cfg_toml.read_text(encoding="utf-8")
 cut = re.sub(r'\[plugins\."yp-e2e@personal"\]\r?\nenabled = true\r?\n\r?\n?', "", text)
 check("找到并删掉了 config.toml 里的条目", cut != text)
 cfg_toml.write_text(cut, encoding="utf-8")
-os.rmdir(CLAUDE_SKILLS / ID)
+remove_link(CLAUDE_SKILLS / ID)
 r = row()
 probs = {a["app"]: a.get("problems") for a in r["apps"]}
 check(f"状态里写出了具体问题：{probs}", any("config.toml" in p for p in probs.get("codex") or [])
@@ -175,11 +250,12 @@ check("后台检查修好了两边", {a["app"]: a.get("state") for a in r["apps"
 check("修复后做了真实检查且通过", all((a.get("verify") or {}).get("ok") for a in r["apps"]))
 check("记下了修复记录", all(a.get("repair") for a in r["apps"]))
 code = subprocess.run([str(EXE), "--run", "guard"], capture_output=True, text=True, encoding="utf-8")
-check(f"exe --run guard 跑通且没问题时只报真实检查都通过（退出码 {code.returncode}）", code.returncode == 0 and ("都通过" in code.stdout or "都没问题" in code.stdout) and "已修复" not in code.stdout)
+check(f"--run guard 跑通且没问题时只报真实检查都通过（退出码 {code.returncode}）", code.returncode == 0 and ("都通过" in code.stdout or "都没问题" in code.stdout) and "已修复" not in code.stdout)
 
 # 8. 后台任务的命令指向 exe 自己
 st = api("state")
-check("后台任务交给 exe 自己", st["hub"]["launcher"].lower().startswith(f'"{str(EXE).lower()}"') or st["hub"]["launcher"].lower().startswith(str(EXE).lower()))
+exe_l = str(EXE).lower()
+check("后台任务交给程序自己", any(st["hub"]["launcher"].lower().startswith(x) for x in (f'"{exe_l}"', f"'{exe_l}'", exe_l)))
 print("   launcher:", st["hub"]["launcher"])
 notes = notes_of("budget")
 check(f"单独看 Codex 的技能清单：{notes}", len(notes) == 1 and "[技能清单] Codex" in notes[0])
@@ -202,6 +278,11 @@ skill_src.mkdir(parents=True)
 
 
 def srow():
+    """state 里测试 skill 那一行，没有就是 None。[基础设施]
+
+    Returns:
+        dict | None
+    """
     return next((r for r in api("state")["plugins"] if r["key"] == f"skill:{SK}"), None)
 
 
@@ -216,7 +297,7 @@ check("统一存放在 ~/.yuwanplugins/skills", (ours_skill / "SKILL.md").is_fil
 check("两边都是指向它的链接", is_link_to(CLAUDE_SKILLS / SK, ours_skill) and is_link_to(skill_src, ours_skill))
 check("两边都显示已链接", {a["app"]: a.get("state") for a in r["apps"]} == {"claude": "ok", "codex": "ok"})
 check("装完的真实检查都通过", all((a.get("verify") or {}).get("ok") for a in r["apps"]))
-os.rmdir(CLAUDE_SKILLS / SK)
+remove_link(CLAUDE_SKILLS / SK)
 r = srow()
 check("链接被删以后显示出问题", any(a["app"] == "claude" and a.get("state") == "missing" for a in r["apps"]))
 notes = notes_of("guard", {"enabled": True})
@@ -232,6 +313,12 @@ check("从所有 app 删掉后不再管理", srow() is None and not ours_skill.e
 check("统一存放的那份挪进了备份", any(BACKUP_DIR.glob(f"skill-{SK}-*")))
 check("Codex 的 config.toml 和测试前一样", (CODEX_HOME / "config.toml").read_text(encoding="utf-8") == CODEX_CONFIG_BEFORE)
 check("Claude Code 的 settings.json 和测试前一样", json.loads(SETTINGS.read_text(encoding="utf-8")) == SETTINGS_BEFORE)
+
+# 收尾：关掉测试里开的后台检查，顺带注销系统任务，别留下一个指向测试程序的 launchd 或计划任务；
+# 测试前就是开着的话提醒一声（它原来指向的是装好的程序，这里不好原样恢复）
+api("guard", {"enabled": False})
+if GUARD_BEFORE:
+    print("   提醒：测试前后台检查是开着的，测试结束时已关掉，请在插件中心里重新打开")
 
 # 收尾：去掉测试插件和测试 skill 在 state.json 里的记录，备份和另存的文件夹，测试用的仓库
 st_path = HUB_DIR / "state.json"

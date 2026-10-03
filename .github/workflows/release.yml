@@ -1,4 +1,4 @@
-# 打 tag（v1.2.0 这样）就构建 Windows 安装包，并建一个草稿 Release 把安装包挂上去。
+# 打 tag（v1.3.0 这样）就构建 Windows 安装包和 macOS 的 DMG，并建一个草稿 Release 把它们挂上去。
 # 检查过草稿没问题，再在 GitHub 页面上点 Publish。手动触发（workflow_dispatch）只构建、不发布。
 name: release
 
@@ -11,8 +11,20 @@ permissions:
   contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows：NSIS 安装包
+          - os: windows-latest
+            targets: x86_64-pc-windows-msvc
+            build: --bundles nsis
+          # macOS：一个通用（universal）的 .app 和 dmg，Apple 芯片和 Intel 的 Mac 都能用。没有签名和公证，首次打开要在访达里右键「打开」
+          - os: macos-latest
+            targets: aarch64-apple-darwin, x86_64-apple-darwin
+            build: --target universal-apple-darwin --bundles app,dmg
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: pluginhub
@@ -32,6 +44,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.89.0
+          targets: ${{ matrix.targets }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -39,11 +52,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # beforeBuildCommand 会先构建页面（pnpm build:renderer），再打 NSIS 安装包
-      - run: pnpm tauri build --bundles nsis
+      # beforeBuildCommand 会先构建页面（pnpm build:renderer），再打安装包
+      - run: pnpm tauri build ${{ matrix.build }}
 
       # 安装包的文件名里有中文，GitHub 会把它改掉，换成英文名再上传
-      - name: Rename installer
+      - name: Rename installer (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
@@ -52,19 +66,39 @@ jobs:
           Copy-Item $setup.FullName "out/PluginHub_${version}_x64-setup.exe"
           Get-ChildItem out
 
+      - name: Rename dmg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          mkdir -p out
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg "out/PluginHub_${version}_universal.dmg"
+          ls -la out
+
       - uses: actions/upload-artifact@v4
         with:
-          name: PluginHub-windows
-          path: pluginhub/out/*.exe
+          name: PluginHub-${{ runner.os }}
+          path: pluginhub/out/*
 
-      - name: Draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
         with:
           draft: true
           name: 插件中心 ${{ github.ref_name }}
-          files: pluginhub/out/*.exe
+          files: out/*
           body: |
-            Windows 安装包：下载 `PluginHub_*_x64-setup.exe` 运行即可（安装到当前用户，不需要管理员权限）。
+            Windows：下载 `PluginHub_*_x64-setup.exe` 运行即可（安装到当前用户，不需要管理员权限）。
             需要本机装有 git；Windows 10/11 自带的 WebView2 缺失时安装程序会自动补装。
             安装包没有代码签名，SmartScreen 提示时点「更多信息 → 仍要运行」。
+
+            macOS：下载 `PluginHub_*_universal.dmg`，把「插件中心」拖进「应用程序」。
+            没有签名和公证，首次打开要在访达里右键 →「打开」；或者在终端运行 `xattr -dr com.apple.quarantine /Applications/插件中心.app`。
+            需要本机装有 git（Xcode 命令行工具或 Homebrew 装的都行）。

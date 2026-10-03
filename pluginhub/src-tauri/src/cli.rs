@@ -1,4 +1,4 @@
-//! 命令行模式：`pluginhub.exe --run <命令> [参数]`。定时任务、开机自启的后台进程也走这里，不开窗口。
+//! 命令行模式：`pluginhub --run <命令> [参数]`（Windows 上是 pluginhub.exe）。定时任务、开机自启的后台进程也走这里，不开窗口。
 use std::io::Write;
 use std::time::{Duration, Instant};
 
@@ -9,21 +9,26 @@ use crate::ops;
 use crate::schedule::*;
 use crate::server::{self, Files};
 use crate::store::*;
+use crate::platform::{CLAUDE_EXE, CODEX_EXE, EXE_NAME};
 use crate::util::*;
 use crate::view::build_state;
 
-const USAGE: &str = "插件中心命令行：pluginhub.exe --run <命令>
+fn usage() -> String {
+    format!(
+        "插件中心命令行：{EXE_NAME} --run <命令>
   status                      在终端打印状态
   check                       检查有没有新版本（锁定的跳过），再做一遍真实检查
   update [插件] [--force]     拉取最新并同步到 Claude Code 和 Codex
   add <仓库> [--branch B] [--no-apply]  接管一个插件仓库
   guard                       马上检查两边的插件配置有没有被改掉，改掉了就修复
-  auto                        后台任务入口：检查并修复配置，到点了就更新
+  auto [--delay 秒]           后台任务入口：检查并修复配置，到点了就更新；--delay 先等一会再开始
   daemon                      开机自启的后台进程
   install [--interval 分钟]   开启自动更新（后台任务）
   uninstall                   关掉后台检查、自动更新和后台任务
   serve [--port N] [--no-browser]  在浏览器里用（页面服务）
-  api <接口> [JSON]           直接调用页面用的接口，输出 JSON（脚本和测试用）";
+  api <接口> [JSON]           直接调用页面用的接口，输出 JSON（脚本和测试用）"
+    )
+}
 
 fn out(s: &str) {
     let _ = writeln!(std::io::stdout(), "{s}");
@@ -45,7 +50,7 @@ fn positional(args: &[String]) -> Vec<String> {
             skip = false;
             continue;
         }
-        if a == "--branch" || a == "--port" || a == "--interval" || a == "--owner" {
+        if a == "--branch" || a == "--port" || a == "--interval" || a == "--owner" || a == "--delay" {
             skip = true;
             continue;
         }
@@ -69,8 +74,8 @@ fn cmd_status() -> R<()> {
     let hub = &s["hub"];
     let auto = &hub["auto"];
     out(&format!("插件中心 {HUB_VERSION}  配置目录 {}", display(&HUB_DIR)));
-    out(&format!("claude.exe: {}", if gs(&s["tools"], "claude").is_empty() { "没找到" } else { gs(&s["tools"], "claude") }));
-    out(&format!("codex.exe:  {}", if gs(&s["tools"], "codex").is_empty() { "没找到" } else { gs(&s["tools"], "codex") }));
+    out(&format!("{CLAUDE_EXE}: {}", if gs(&s["tools"], "claude").is_empty() { "没找到" } else { gs(&s["tools"], "claude") }));
+    out(&format!("{CODEX_EXE}:  {}", if gs(&s["tools"], "codex").is_empty() { "没找到" } else { gs(&s["tools"], "codex") }));
     let auto_text = if gb(auto, "enabled") { format!("开（每 {} 分钟）", auto.get("interval_minutes").and_then(Value::as_i64).unwrap_or(60)) } else { "关".into() };
     let task_text = if gb(auto, "installed") { format!("在运行，下次 {}", gs(auto, "next_run")) } else { "没有".into() };
     out(&format!("自动更新：{auto_text}  后台检查：{}  后台任务：{task_text}", if gb(&hub["guard"], "enabled") { "开" } else { "关" }));
@@ -118,9 +123,21 @@ fn cmd_status() -> R<()> {
     Ok(())
 }
 
-/// 后台任务入口（系统定时任务或开机自启的后台进程每次调用）：检查并修复配置，到点了就更新
-fn cmd_auto() {
-    let result = hub_lock(30).and_then(|_lock| ops::tick());
+/// 后台任务入口（系统定时任务或开机自启的后台进程每次调用）：检查并修复配置，到点了就更新。
+/// 什么时候跑过记在 state.json 里，页面上据此算下一次是什么时候（launchd 不会告诉我们）。
+/// delay_secs：先等一会再开始。launchd 登记后会马上运行一次，macOS 上传 --delay 让它像 Windows 的计划任务一样过两分钟再跑，
+/// 免得和用户刚才还在进行的操作抢锁
+fn cmd_auto(delay_secs: u64) {
+    if delay_secs > 0 {
+        std::thread::sleep(Duration::from_secs(delay_secs));
+    }
+    let result = hub_lock(30).and_then(|_lock| {
+        let r = ops::tick();
+        let mut st = load_state();
+        st.insert("last_tick".into(), Value::from(stamp()));
+        let _ = save_state(&st);
+        r
+    });
     if let Err(e) = result {
         // 后台任务没有界面，出错只能写日志
         log(&format!("后台任务出错：{e}"));
@@ -143,7 +160,7 @@ fn cmd_daemon() -> R<()> {
             return Ok(());
         }
         if Instant::now() >= next_run {
-            cmd_auto();
+            cmd_auto(0);
             let secs = minutes.unwrap_or(GUARD_MINUTES) * 60;
             next_run = Instant::now() + Duration::from_secs(secs as u64);
             next_at = chrono::Local::now() + chrono::Duration::seconds(secs);
@@ -201,7 +218,7 @@ pub fn run_cli(args: &[String], files: Files) -> i32 {
         },
         "guard" => hub_lock(120).and_then(|_l| ops::op_guard()).map(|n| print_notes(&n, "两边的插件配置都没问题")),
         "auto" => {
-            cmd_auto();
+            cmd_auto(value_of(&rest, "--delay").and_then(|v| v.parse().ok()).unwrap_or(0));
             Ok(())
         }
         "daemon" => cmd_daemon(),
@@ -214,15 +231,15 @@ pub fn run_cli(args: &[String], files: Files) -> i32 {
         "serve" => {
             let port = value_of(&rest, "--port").and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_PORT);
             let owner = value_of(&rest, "--owner").and_then(|v| v.parse().ok());
-            ensure_daemon();
+            ensure_background();
             server::serve(files, port, !flag(&rest, "--no-browser"), owner)
         }
         "api" => cmd_api(&rest),
         "help" | "--help" | "-h" | "" => {
-            out(USAGE);
+            out(&usage());
             Ok(())
         }
-        other => Err(HubError::Msg(format!("不认识的命令：{other}\n{USAGE}"))),
+        other => Err(HubError::Msg(format!("不认识的命令：{other}\n{}", usage()))),
     };
     match result {
         Ok(()) => 0,

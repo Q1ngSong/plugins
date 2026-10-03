@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 use crate::bail;
 use crate::ops::dispatch;
+use crate::platform;
 use crate::util::*;
 
 pub type Files = Arc<HashMap<String, Vec<u8>>>;
@@ -173,7 +174,7 @@ pub fn serve(files: Files, port: u16, open_browser: bool, owner: Option<u32>) ->
         std::thread::sleep(Duration::from_secs(if owner.is_some() { 5 } else { 60 }));
         let idle = watch.last_seen.lock().expect("lock").elapsed();
         if let Some(pid) = owner {
-            if !process_alive(pid) {
+            if !platform::process_alive(pid) {
                 log("插件中心窗口关掉了，页面服务退出");
                 cleanup_info();
                 std::process::exit(0);
@@ -185,7 +186,7 @@ pub fn serve(files: Files, port: u16, open_browser: bool, owner: Option<u32>) ->
         }
     });
     if open_browser {
-        let _ = shell_open(&url);
+        let _ = platform::shell_open(&url);
     }
     for stream in listener.incoming().flatten() {
         let srv = srv.clone();

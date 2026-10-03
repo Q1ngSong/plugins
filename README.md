@@ -2,7 +2,7 @@
 
 让 Claude Code 和 Codex 用同一份插件和技能。
 
-Windows 桌面程序，安装包 2 MB 出头，下载就能用，不需要 Python。
+Windows 和 macOS 桌面程序，安装包只有几 MB，下载就能用，不需要 Python。
 
 ![插件只在 ~/.yuwanplugins 里存一份，Claude Code 和 Codex 都用目录链接指向它](assets/hero.svg)
 
@@ -20,11 +20,21 @@ Codex 没有更新命令，我只好手动把插件文件夹整个换掉，换�
 
 ## 安装
 
+### Windows
+
 到 [Releases](../../releases) 下载 `PluginHub_<版本>_x64-setup.exe`，双击安装。装在当前用户目录下，用不着管理员权限。
 
 电脑上要有 [Git for Windows](https://git-scm.com/download/win)，Claude Code 和 Codex 至少装一个。WebView2 是 Windows 10 和 11 自带的，万一缺了，安装程序会自己补上。
 
 安装包没有代码签名，第一次运行时 SmartScreen 会拦一下，点「更多信息」，再点「仍要运行」。
+
+### macOS
+
+到 [Releases](../../releases) 下载 `PluginHub_<版本>_universal.dmg`，打开后把「插件中心」拖进「应用程序」。Apple 芯片和 Intel 的 Mac 都能用，要 macOS 10.15 以上。
+
+电脑上要有 git（装过 Xcode 命令行工具或 Homebrew 的都有），Claude Code 和 Codex 至少装一个。两边的命令行放在哪都认得：Claude Code 桌面版自带的、官方脚本装到 `~/.local/bin` 的、Homebrew 或 npm 装的；Codex 桌面版和 ChatGPT 桌面版自带的、npm 装的。
+
+应用没有签名和公证，第一次打开时 macOS 会说无法验证开发者：在访达里右键点它，选「打开」；或者在终端运行 `xattr -dr com.apple.quarantine /Applications/插件中心.app`。
 
 ## 用起来
 
@@ -110,7 +120,7 @@ Codex 那边还顺带看一件事。它给技能清单留的地方只有上下�
 
 发现问题就修好，把是哪个文件、什么时候改的记进日志，再做一次真实检查。详情页里对应的 app 卡片上也会写一句：什么时候发现了什么，修好了没有。
 
-后台任务优先用 Windows 的计划任务，没有权限建计划任务的机器上，改成开机自启的后台进程。两种方式跑的都是装好的那个程序。
+后台任务在 Windows 上用计划任务，没有权限建计划任务的机器上改成开机自启的后台进程；在 macOS 上用 launchd 的用户级任务（`~/Library/LaunchAgents/com.yuwan.pluginhub.plist`），登录后和每隔一段时间各跑一次。跑的都是装好的那个程序。
 
 ### 两个删除按钮
 
@@ -124,7 +134,7 @@ Codex 那边还顺带看一件事。它给技能清单留的地方只有上下�
 
 ![命令行：pluginhub.exe --run status 打印每个插件在两边的状态](assets/cli.svg)
 
-同一个 `pluginhub.exe` 加上 `--run` 就是命令行，后台任务用的也是它。安装后它在 `%LOCALAPPDATA%\插件中心\pluginhub.exe`。
+同一个程序加上 `--run` 就是命令行，后台任务用的也是它。Windows 上装好后它在 `%LOCALAPPDATA%\插件中心\pluginhub.exe`；macOS 上在 `/Applications/插件中心.app/Contents/MacOS/pluginhub`，嫌长可以在 `~/.zshrc` 里加一行 `alias pluginhub='/Applications/插件中心.app/Contents/MacOS/pluginhub'`。
 
 | 命令 | 做什么 |
 |---|---|
@@ -138,11 +148,11 @@ Codex 那边还顺带看一件事。它给技能清单留的地方只有上下�
 | `--run serve [--port N] [--no-browser]` | 在浏览器里打开管理页面 |
 | `--run api <接口> [JSON]` | 直接调用页面用的接口，输出 JSON |
 
-它是个窗口程序，cmd 不会等它跑完。要看输出，在 PowerShell 里末尾加 `| Out-Host`，或者用 `cmd /c start /wait`。
+Windows 上它是个窗口程序，cmd 不会等它跑完。要看输出，在 PowerShell 里末尾加 `| Out-Host`，或者用 `cmd /c start /wait`。macOS 的终端里直接运行就行。
 
 ## 背后的做法
 
-Windows 的目录链接（junction）普通用户就能建，删掉链接也不会动到它指向的文件夹。插件中心靠的就是它。
+插件中心靠的是目录链接：Windows 用 junction，普通用户就能建；macOS 用符号链接。删掉链接不会动到它指向的文件夹。
 
 Claude Code 会把 `~/.claude/skills` 下带 `.claude-plugin/plugin.json` 的文件夹就地加载成 `<名字>@skills-dir`，不往缓存里复制。所以链接一放，它读的就是 `~/.yuwanplugins` 里的那份。
 
@@ -161,12 +171,13 @@ Codex 麻烦一些。它只认自己缓存里的真实文件夹，整个缓存�
 | `~/.pluginhub/usage.json` | 会话记录的扫描缓存，删了会重扫 |
 | `~/.pluginhub/backups` | 不再管理的插件和以前复制出来的旧文件夹，每个插件留 3 份 |
 | `~/.pluginhub/saved` | 另存并还原时存下的修改，不会自动删 |
+| `~/Library/LaunchAgents/com.yuwan.pluginhub.plist` | macOS 上后台任务的 launchd 描述文件，关掉后台检查和自动更新就会删掉 |
 
 ## 还没做的
 
-- 只有 Windows 版。macOS 要把目录链接换成符号链接、把计划任务换成 launchd，还没动手。
+- 没有 Linux 版。
 - 技能还不能从 git 仓库添加，现在管的是本机已有的技能。
-- 安装包没有代码签名。
+- 安装包没有代码签名，macOS 版也没有公证。
 - 只管 Claude Code 和 Codex 这两个 app。
 
 ## 开发

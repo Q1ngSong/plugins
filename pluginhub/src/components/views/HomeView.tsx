@@ -2,7 +2,7 @@ import { AlertTriangle, Lock, Plus, Puzzle, Scissors, ScrollText, ShieldCheck, W
 import { Button } from "@/components/ui/button";
 import { AppChip, Spinner, Tag } from "@/components/common/bits";
 import { PluginActions } from "@/components/common/PluginActions";
-import { api, APP_NAME, AppKey, installedApps, isOurs, isSkill, Kind, Plugin, State, tokens, troubledApps, when } from "@/lib/api";
+import { api, APP_NAME, AppKey, exeName, installedApps, isOurs, isSkill, Kind, Plugin, State, tokens, troubledApps, when } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 import type { ConfirmFn } from "@/App";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ function iconTone(p: Plugin) {
 
 function Notices({ state, busy, run }: { state: State; busy: string | null; run: Run }) {
   const notes: string[] = [];
-  if (!state.tools.claude) notes.push("没找到 Claude Code 的命令行 claude.exe，Claude Code 这边无法安装和更新。");
-  if (!state.tools.codex) notes.push("没找到 Codex 的命令行 codex.exe，Codex 这边无法安装和更新。");
+  if (!state.tools.claude) notes.push(`没找到 Claude Code 的命令行 ${exeName(state, "claude")}，Claude Code 这边无法安装和更新。`);
+  if (!state.tools.codex) notes.push(`没找到 Codex 的命令行 ${exeName(state, "codex")}，Codex 这边无法安装和更新。`);
   if (!state.tools.git) notes.push("没找到 git，无法拉取插件。");
   const auto = state.hub.auto;
   if ((auto.enabled || state.hub.guard.enabled) && !auto.installed) notes.push("后台检查或自动更新是开着的，但后台任务没在运行。到设置里把它关掉再打开一次。");

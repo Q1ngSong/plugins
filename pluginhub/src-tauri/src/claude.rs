@@ -1,4 +1,4 @@
-//! Claude Code：受管插件在 ~/.claude/skills/<名字> 放一个链接，Claude Code 就地加载成 <名字>@skills-dir
+//! Claude Code：受管插件在 ~/.claude/skills/<名字> 放一个目录链接，Claude Code 就地加载成 <名字>@skills-dir
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,6 +7,7 @@ use regex::Regex;
 use serde_json::{json, Map, Value};
 
 use crate::gitx::{backup, ours};
+use crate::platform::{self, CLAUDE_EXE};
 use crate::util::*;
 
 pub fn describe_claude_source(mk: Option<&Value>) -> String {
@@ -37,11 +38,11 @@ pub struct ClaudeCode {
 
 impl ClaudeCode {
     pub fn new() -> Self {
-        Self { exe: find_claude(), listed: None }
+        Self { exe: platform::find_claude(), listed: None }
     }
 
     fn exe_str(&self) -> R<String> {
-        self.exe.as_ref().map(|p| p.to_string_lossy().to_string()).ok_or_else(|| HubError::Msg("找不到 Claude Code 的命令行 claude.exe。".into()))
+        self.exe.as_ref().map(|p| p.to_string_lossy().to_string()).ok_or_else(|| HubError::Msg(format!("找不到 Claude Code 的命令行 {CLAUDE_EXE}。")))
     }
 
     pub fn cli(&self, args: &[&str]) -> R<String> {
@@ -67,8 +68,9 @@ impl ClaudeCode {
             return Ok((false, format!("claude plugin list 里有 {pid}，但它是停用的")));
         }
         if let Some(root) = root {
+            // 它报的可能是链接的路径，也可能已经解析成了指向的真实路径
             let install = expand_user(gs(e, "installPath"));
-            if !links_to(&install, root) {
+            if !links_to(&install, root) && !same_real(&install, root) {
                 return Ok((false, format!("Claude Code 加载的是 {}，不是链接到 {} 的那份", gs(e, "installPath"), display(root))));
             }
         }
@@ -142,7 +144,7 @@ impl ClaudeCode {
         // 具体哪里不对，以及相关配置文件什么时候被改过（别的程序改掉配置时好对上号）
         let mut problems = Vec::new();
         if !linked {
-            problems.push(if is_junction(&link) {
+            problems.push(if platform::is_link(&link) {
                 format!("{} 指向了别处", display(&link))
             } else if link.exists() {
                 format!("{} 是个真实文件夹，不是链接", display(&link))
@@ -202,7 +204,7 @@ impl ClaudeCode {
             }
         }
         let link = CLAUDE_SKILLS.join(name);
-        if make_junction(&link, folder)? {
+        if make_link(&link, folder)? {
             notes.push(format!("链接 {} → {}", display(&link), display(folder)));
         }
         let pid = format!("{name}@skills-dir");
@@ -226,8 +228,8 @@ impl ClaudeCode {
             return Ok(());
         }
         let d = CLAUDE_SKILLS.join(name);
-        if is_junction(&d) {
-            fs::remove_dir(&d)?;
+        if platform::is_link(&d) {
+            platform::remove_link(&d)?;
         } else if d.exists() {
             backup(&d, name)?;
         }

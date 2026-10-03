@@ -10,10 +10,11 @@ use crate::bail;
 use crate::claude::{describe_claude_source, split_id, ClaudeCode};
 use crate::codex::Codex;
 use crate::gitx::*;
-use crate::schedule::{auto_status, launcher_line};
+use crate::schedule::auto_status;
 use crate::skills::{read_front, tokens};
 use crate::store::*;
 use crate::usage::{merge_projects, project_rows, scan_usage, ProjRow, Usage};
+use crate::platform;
 use crate::util::*;
 
 /// 受管插件的来源信息：跟踪的分支、本机和远端的提交、两边各自的状态
@@ -478,7 +479,8 @@ pub fn build_state() -> R<Value> {
     Ok(json!({
         "generated_at": stamp(),
         "hub": {
-            "version": HUB_VERSION, "home": display(&HUB_DIR), "plugins_dir": display(&PLUGINS_DIR),
+            "version": HUB_VERSION, "os": std::env::consts::OS, "home": display(&HUB_DIR), "plugins_dir": display(&PLUGINS_DIR),
+            "saved_dir": display(&SAVED_DIR),
             "auto": auto_status(&cfg), "last_auto": st.get("last_auto").cloned().unwrap_or(Value::Null),
             "guard": {"enabled": cfg.guard.enabled, "last": st.get("last_guard").cloned().unwrap_or(Value::Null)},
             "launcher": launcher_line(&["auto"]),
@@ -486,7 +488,7 @@ pub fn build_state() -> R<Value> {
         "tools": {
             "claude": claude.exe.as_deref().map(display).unwrap_or_default(),
             "codex": codex.exe.as_deref().map(display).unwrap_or_default(),
-            "git": which_git().as_deref().map(display).unwrap_or_default(),
+            "git": platform::which_git().as_deref().map(display).unwrap_or_default(),
         },
         "codex_skills": st.get("codex_skills").cloned().unwrap_or(Value::Null),
         "plugins": plugins,

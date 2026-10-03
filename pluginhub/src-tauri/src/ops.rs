@@ -12,6 +12,7 @@ use crate::codex::Codex;
 use crate::gitx::*;
 use crate::schedule::*;
 use crate::store::*;
+use crate::platform;
 use crate::util::*;
 use crate::view::*;
 
@@ -426,7 +427,7 @@ fn record_budget(codex: &mut Codex, st: &mut State) -> Option<String> {
 fn act_budget() -> R<Vec<String>> {
     let mut st = load_state();
     let mut codex = Codex::new();
-    codex.prompt_text()?; // 渲染不出来（比如找不到 codex.exe）就直接报错，不记进状态
+    codex.prompt_text()?; // 渲染不出来（比如找不到 codex 的命令行）就直接报错，不记进状态
     let line = record_budget(&mut codex, &mut st);
     save_state(&st)?;
     Ok(vec![line.unwrap_or_else(|| format!("[技能清单] Codex：{}", gs(&st["codex_skills"], "detail")))])
@@ -685,13 +686,13 @@ pub fn act_save(body: &Value) -> R<Vec<String>> {
         log(n);
     }
     if std::env::var_os("PLUGINHUB_NO_OPEN").is_none() {
-        let _ = shell_open(&display(&dest)); // 打开刚另存的文件夹（测试时用环境变量关掉）
+        let _ = platform::shell_open(&display(&dest)); // 打开刚另存的文件夹（测试时用环境变量关掉）
     }
     notes.extend(op_update(Some(&p.id), false)?);
     Ok(notes)
 }
 
-/// 在资源管理器或浏览器里打开：插件文件夹、插件中心的文件夹，或网页链接
+/// 在资源管理器（访达）或浏览器里打开：插件文件夹、插件中心的文件夹，或网页链接
 pub fn open_target(target: &str) -> R<()> {
     let folder = match target {
         "plugins_dir" => Some(&*PLUGINS_DIR),
@@ -701,10 +702,10 @@ pub fn open_target(target: &str) -> R<()> {
     };
     if let Some(f) = folder {
         fs::create_dir_all(f)?;
-        return shell_open(&display(f));
+        return platform::shell_open(&display(f));
     }
     if target.starts_with("http://") || target.starts_with("https://") {
-        return shell_open(target);
+        return platform::shell_open(target);
     }
     bail!("只能打开插件中心的文件夹或网页链接。")
 }
