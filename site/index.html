@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="插件中心：让 Claude Code 和 Codex 用同一份插件和技能。插件只存一份，两个 app 都用目录链接指过来，更新就是一次 git pull。Windows 和 macOS 桌面程序。">
+  <meta name="theme-color" content="#faf8f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#18181a" media="(prefers-color-scheme: dark)">
+  <title>插件中心 · 一份插件，两个 app</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2318181b'/%3E%3Ccircle cx='23' cy='32' r='9' fill='%23f0936c'/%3E%3Ccircle cx='41' cy='32' r='9' fill='%234fd1a8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="site/style.css">
+</head>
+<body>
+<a class="skip-link" href="#download">跳到下载</a>
+<header class="site-nav wrap">
+  <a class="wordmark" href="./" aria-label="插件中心首页">插件中心<span class="wordmark-tail"> / pluginhub</span></a>
+  <nav aria-label="主导航"><a href="#download">下载</a><a href="#readme">README</a><a href="https://github.com/Q1ngSong/plugins">GitHub <span aria-hidden="true">↗</span></a></nav>
+</header>
+<main class="wrap">
+  <section class="hero" aria-labelledby="project-title">
+    <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> OPEN SOURCE · PLUGIN &amp; SKILL MANAGER</p>
+    <h1 id="project-title">插件中心</h1>
+    <p class="hero-title">让 <span class="cc">Claude Code</span> 和 <span class="cx">Codex</span>，<br class="desktop-break">用同一份插件和技能。</p>
+    <p class="hero-description">插件在电脑上只存一份，两个 app 都用目录链接指过来。<br class="desktop-break">更新就是在这一份里 git pull，两边一起生效。</p>
+    <div class="hero-actions"><a class="button primary" href="#download">下载安装 <span aria-hidden="true">↘</span></a><a class="button secondary" href="https://github.com/Q1ngSong/plugins">查看源代码 <span aria-hidden="true">↗</span></a></div>
+    <img class="hero-figure" src="assets/hero.svg" alt="插件只在 ~/.yuwanplugins 里存一份，Claude Code 和 Codex 都用目录链接指向它" width="840" height="360">
+    <div class="hero-foot"><span>One copy, two apps.</span><span class="hero-tags">Windows / macOS <i>·</i> 几 MB <i>·</i> 不需要 Python</span></div>
+  </section>
+  <section id="download" class="examples" aria-labelledby="download-title">
+    <div class="section-heading"><div><p class="eyebrow">01 / DOWNLOAD</p><h2 id="download-title">下载安装</h2></div><p>下载就能用。电脑上要有 git，Claude Code 和 Codex 至少装一个。</p></div>
+    <div class="case-grid">
+      <a class="case-card" href="https://github.com/Q1ngSong/plugins/releases" aria-label="到 Releases 下载 Windows 版">
+        <div class="case-body"><div class="case-meta"><span>WINDOWS 10 / 11</span><span>X64</span></div>
+          <h3>Windows</h3><p class="case-subtitle"><code>PluginHub_&lt;版本&gt;_x64-setup.exe</code></p>
+          <p class="case-description">双击安装，装在当前用户目录下，用不着管理员权限。目录链接用的是 junction，普通用户就能建。</p><div class="case-tags"><span>NSIS 安装包</span><span>免管理员</span><span>计划任务</span></div>
+          <div class="case-cta">到 Releases 下载 <span aria-hidden="true">↗</span></div>
+        </div>
+      </a>
+      <a class="case-card" href="https://github.com/Q1ngSong/plugins/releases" aria-label="到 Releases 下载 macOS 版">
+        <div class="case-body"><div class="case-meta"><span>MACOS 10.15+</span><span>UNIVERSAL</span></div>
+          <h3>macOS</h3><p class="case-subtitle"><code>PluginHub_&lt;版本&gt;_universal.dmg</code></p>
+          <p class="case-description">打开后把「插件中心」拖进「应用程序」。Apple 芯片和 Intel 的 Mac 都能用，目录链接用的是符号链接。</p><div class="case-tags"><span>通用 dmg</span><span>Apple 芯片 / Intel</span><span>launchd</span></div>
+          <div class="case-cta">到 Releases 下载 <span aria-hidden="true">↗</span></div>
+        </div>
+      </a>
+    </div>
+    <p class="examples-note">安装包没有代码签名，第一次打开会被系统拦一下，怎么放行见下面的<a href="#安装">安装</a>一节。</p>
+  </section>
+  <section id="readme" class="readme-section" aria-label="README">
+    <article class="readme-content">__README__</article>
+  </section>
+</main>
+<footer class="site-footer wrap"><a class="wordmark" href="#project-title">插件中心</a><p>一份插件，两个 app。</p><a href="https://github.com/Q1ngSong/plugins/blob/main/LICENSE">MIT License</a></footer>
+</body>
+</html>

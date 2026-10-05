@@ -1,5 +1,5 @@
 """端到端测试：通过 pluginhub --run api（Windows 上是 pluginhub.exe）调用接口，覆盖添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载，
-独立 skill 的收编、两边链接、修复和删除，以及真实检查顺带看的 Codex 技能清单。
+独立 skill 的收编、两边链接、修复和删除，真实检查顺带看的 Codex 技能清单，以及用 npx skills add 命令从 git 仓库装技能。
 用本地 git 仓库当远端，不碰 dclh。会真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件和一个测试 skill，
 测完会卸掉并清理干净，关掉测试里开的后台检查，最后核对两边的配置和测试前一样。
 
@@ -311,6 +311,92 @@ check("只从 Codex 删：拆了链接，统一存放的那份还在", not skill
 api("uninstall", {"key": f"skill:{SK}"})
 check("从所有 app 删掉后不再管理", srow() is None and not ours_skill.exists() and not (CLAUDE_SKILLS / SK).exists())
 check("统一存放的那份挪进了备份", any(BACKUP_DIR.glob(f"skill-{SK}-*")))
+# 12. 从 git 仓库装技能：把 npx skills add 命令粘进来。仓库里没有插件清单，只有 skills/ 下的两个技能
+RID = f"{ID}-skills"
+sk_src, sk_bare = work / "sk-src", work / f"{RID}.git"
+for n in ("alpha", "beta"):
+    (sk_src / "skills" / n).mkdir(parents=True)
+    (sk_src / "skills" / n / "SKILL.md").write_text(f"---\nname: {ID}-{n}\ndescription: e2e {n} skill\n---\nv1\n")
+git("init", "-b", "main", cwd=sk_src)
+git("add", ".", cwd=sk_src)
+git("commit", "-m", "v1", cwd=sk_src)
+subprocess.run([g, "clone", "--bare", str(sk_src), str(sk_bare)], check=True, capture_output=True)
+git("remote", "add", "origin", str(sk_bare), cwd=sk_src)
+sk_url = "file:///" + str(sk_bare).replace("\\", "/").lstrip("/")
+A, B = f"{ID}-alpha", f"{ID}-beta"
+dup = HOME / ".agents" / "skills" / f"{B}-dup"
+rmtree(dup)
+probe = api("probe", {"repo": f"npx skills add {sk_url} --skill {A} -a claude-code,codex"})
+main_b = next((b for b in probe.get("branches", []) if b["name"] == "main"), {})
+check("npx 命令识别成技能，点到了 alpha", probe.get("mode") == "skills" and probe.get("input", {}).get("skills") == [A]
+      and probe["input"]["agents"] == ["claude", "codex"] and {s["name"] for s in main_b.get("skills", [])} == {A, B}
+      and probe.get("id") == RID and probe.get("managed") is False)
+# 不经过页面：整条 npx 命令直接交给 add，分支和技能都由它自己认
+res = api("add", {"repo": f"npx skills add {sk_url} --skill {A} -a claude-code,codex", "apps": ["claude", "codex"]})
+print("   skills add:", "\n        ".join(res.get("notes") or [res.get("error")]))
+
+
+def skrow(name):
+    return next((r for r in api("state")["plugins"] if r["key"] == f"skill:{name}"), None)
+
+
+def cfg_plugins():
+    return [p["id"] for p in json.loads((HUB_DIR / "config.json").read_text(encoding="utf-8")).get("plugins", [])]
+
+
+ours_a = PLUGINS_DIR / "skills" / "alpha"
+r = skrow(A)
+check("技能行带着仓库信息", r is not None and (r.get("managed") or {}).get("id") == RID and r["skill"]["ours"] and r["skill"].get("repo") == RID)
+check("两边链接到统一存放处，统一存放处链接到克隆里的文件夹",
+      is_link_to(CLAUDE_SKILLS / "alpha", ours_a) and is_link_to(CODEX_HOME / "skills" / "alpha", ours_a) and is_link_to(ours_a, PLUGINS_DIR / RID / "skills" / "alpha"))
+check("装完的真实检查都通过", r is not None and all((a.get("verify") or {}).get("ok") for a in r["apps"]))
+check("只拿技能的仓库不单独显示成插件卡片", not any(x["key"] == RID for x in api("state")["plugins"]))
+(sk_src / "skills" / "alpha" / "SKILL.md").write_text(f"---\nname: {A}\ndescription: e2e alpha skill\n---\nv2\n")
+git("commit", "-am", "v2", cwd=sk_src)
+git("push", "origin", "main", cwd=sk_src)
+api("check")
+check("技能的仓库有新版本", ((skrow(A) or {}).get("managed") or {}).get("needs_update") is True)
+res = api("sync", {"key": f"skill:{A}"})
+check("同步拉到了新版本，两边读到的就是新文件", "v2" in (CLAUDE_SKILLS / "alpha" / "SKILL.md").read_text() and "error" not in res)
+# Codex 还会读 ~/.agents/skills（npx skills 装技能的地方）：那里已经有同名的，就不往 Codex 再装一份
+dup.mkdir(parents=True)
+(dup / "SKILL.md").write_text(f"---\nname: {B}\ndescription: same name, installed by npx skills\n---\n")
+main_b = next((b for b in api("probe", {"repo": sk_url}).get("branches", []) if b["name"] == "main"), {})
+check("查询时标出 Codex 已经从 ~/.agents/skills 读到同名技能", next((s.get("local") for s in main_b.get("skills", []) if s["name"] == B), None) == ["agents"])
+res = api("add", {"repo": sk_url, "branch": "main", "apps": ["claude", "codex"], "skills": ["skills/beta"]})
+check("同名技能不往 Codex 重复装，也没留下半截的链接", "~/.agents/skills" in (res.get("error") or "") and not (CLAUDE_SKILLS / "beta").exists() and not (PLUGINS_DIR / "skills" / "beta").exists())
+rmtree(dup)
+res = api("add", {"repo": sk_url, "branch": "main", "apps": ["claude"], "skills": ["skills/beta"]})
+check("同一个仓库再装一个技能", is_link_to(CLAUDE_SKILLS / "beta", PLUGINS_DIR / "skills" / "beta") and "error" not in res)
+
+# 13. 只拿了技能的仓库后来有了插件清单：同一份克隆再装成插件；卸掉插件时技能还在用，克隆要留着
+(sk_src / ".claude-plugin").mkdir()
+(sk_src / ".codex-plugin").mkdir()
+(sk_src / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": RID, "version": "0.0.1", "description": "e2e"}))
+(sk_src / ".codex-plugin" / "plugin.json").write_text(json.dumps({"name": RID, "version": "0.0.1", "description": "e2e", "skills": "./skills/"}))
+git("add", ".", cwd=sk_src)
+git("commit", "-m", "v3 plugin", cwd=sk_src)
+git("push", "origin", "main", cwd=sk_src)
+probe = api("probe", {"repo": sk_url})
+check("查询认出仓库已经在管理、现在也是插件了", probe.get("managed_as") == "skills" and probe.get("managed_branch") == "main" and probe.get("mode") == "plugin"
+      and sorted(probe.get("managed_skills", [])) == ["skills/alpha", "skills/beta"])
+res = api("add", {"repo": sk_url, "branch": "main", "apps": ["claude", "codex"]})
+print("   plugin add:", "\n        ".join(res.get("notes") or [res.get("error")]))
+pr = next((r for r in api("state")["plugins"] if r["key"] == RID), None)
+check("同一份克隆装成了插件，两边都通过真实检查", pr is not None and {a["app"]: a.get("state") for a in pr["apps"]} == {"claude": "ok", "codex": "ok"}
+      and all((a.get("verify") or {}).get("ok") for a in pr["apps"]))
+check("原来的技能还在", is_link_to(CLAUDE_SKILLS / "alpha", ours_a) and (skrow(A) or {}).get("skill", {}).get("repo") == RID)
+res = api("uninstall", {"key": RID})
+print("   plugin uninstall:", "\n        ".join(res.get("notes") or [res.get("error")]))
+check("卸掉插件：技能还在用，仓库和克隆都留着，只是不再装成插件",
+      RID in cfg_plugins() and (PLUGINS_DIR / RID / ".git").is_dir() and not any(r["key"] == RID for r in api("state")["plugins"])
+      and not (CLAUDE_SKILLS / RID).exists() and "v2" in (CLAUDE_SKILLS / "alpha" / "SKILL.md").read_text())
+
+api("uninstall", {"key": f"skill:{A}"})
+check("删掉 alpha 后仓库还在管理（beta 还在用）", RID in cfg_plugins() and not (CLAUDE_SKILLS / "alpha").exists() and not ours_a.is_symlink() and (PLUGINS_DIR / RID).is_dir())
+api("uninstall", {"key": f"skill:{B}"})
+check("技能都删了，仓库也不再管理，克隆挪进了备份", RID not in cfg_plugins() and not (PLUGINS_DIR / RID).exists() and any(BACKUP_DIR.glob(f"{RID}-*")))
+
 check("Codex 的 config.toml 和测试前一样", (CODEX_HOME / "config.toml").read_text(encoding="utf-8") == CODEX_CONFIG_BEFORE)
 check("Claude Code 的 settings.json 和测试前一样", json.loads(SETTINGS.read_text(encoding="utf-8")) == SETTINGS_BEFORE)
 
@@ -326,7 +412,8 @@ st = json.loads(st_path.read_text(encoding="utf-8"))
 for k in ("verify", "repairs"):
     for key in [x for x in st.get(k, {}) if ID in x]:
         del st[k][key]
-st.get("plugins", {}).pop(ID, None)
+for key in [x for x in st.get("plugins", {}) if x.startswith(ID)]:
+    del st["plugins"][key]
 st_path.write_text(json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 for d in [*BACKUP_DIR.glob(f"{ID}-*"), *BACKUP_DIR.glob(f"skill-{SK}-*"), *(SAVED_DIR.glob(f"{ID}-*") if SAVED_DIR.exists() else [])]:
     rmtree(d)
@@ -336,6 +423,7 @@ for d in (PLUGINS_DIR / "skills",):
 if SAVED_DIR.exists() and not any(SAVED_DIR.iterdir()):
     SAVED_DIR.rmdir()
 rmtree(work)
+rmtree(dup)
 
 print("RESULT:", "FAILED" if failed else "ALL PASSED")
 sys.exit(1 if failed else 0)

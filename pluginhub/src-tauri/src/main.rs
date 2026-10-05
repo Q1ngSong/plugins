@@ -20,6 +20,7 @@ mod platform;
 mod schedule;
 mod server;
 mod skills;
+mod source;
 mod store;
 mod usage;
 mod util;

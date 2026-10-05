@@ -11,6 +11,7 @@ use crate::claude::{split_id, ClaudeCode};
 use crate::codex::Codex;
 use crate::gitx::*;
 use crate::schedule::*;
+use crate::source;
 use crate::store::*;
 use crate::platform;
 use crate::util::*;
@@ -58,7 +59,7 @@ pub fn op_check() -> R<Vec<String>> {
     Ok(notes)
 }
 
-fn update_one(p: &PluginCfg, m: &mut Map<String, Value>, claude: &ClaudeCode, codex: &Codex, force: bool) -> R<Vec<String>> {
+fn update_one(cfg: &Config, p: &PluginCfg, m: &mut Map<String, Value>, claude: &ClaudeCode, codex: &Codex, force: bool) -> R<Vec<String>> {
     let tag = format!("[{}]", p.id);
     let mut notes = Vec::new();
     let d = repo_dir(p);
@@ -87,17 +88,20 @@ fn update_one(p: &PluginCfg, m: &mut Map<String, Value>, claude: &ClaudeCode, co
         let short = |s: &Option<String>| s.as_deref().map(|x| x.chars().take(7).collect::<String>()).unwrap_or_else(|| "无".into());
         notes.push(format!("{tag} {} {} → {}：{}", display(&d), short(&old), short(&new), info.map(|c| c.subject).unwrap_or_default()));
     }
-    let man = read_manifests(&d, None);
+    let root = p.root(&d);
+    let man = read_manifests_at(&d, None, p.path.as_deref().unwrap_or(""));
     if p.target("claude") {
         for c in &man.claude_plugins {
-            notes.extend(claude.link(&c.name, &d.join(&c.path))?.into_iter().map(|n| format!("{tag} Claude Code：{n}")));
+            notes.extend(claude.link(&c.name, &root.join(&c.path))?.into_iter().map(|n| format!("{tag} Claude Code：{n}")));
         }
     }
     if p.target("codex") {
         if let Some(name) = &man.codex_name {
-            notes.extend(codex.link(name, &d, force)?.into_iter().map(|n| format!("{tag} Codex：{n}")));
+            notes.extend(codex.link(name, &root, force)?.into_iter().map(|n| format!("{tag} Codex：{n}")));
         }
     }
+    // 从这个仓库里拿的技能：统一存放处的链接和两边的链接都对上
+    notes.extend(crate::skills::relink_repo(cfg, &p.id, &d).into_iter().map(|n| format!("{tag} {n}")));
     set(m, "updated_at", stamp());
     set(m, "checked_at", stamp());
     set(m, "error", pending.clone().map(Value::from).unwrap_or(Value::Null));
@@ -121,7 +125,7 @@ pub fn op_update(pid: Option<&str>, force: bool) -> R<Vec<String>> {
             continue;
         }
         let m = memo(&mut st, &p.id);
-        match update_one(p, m, &claude, &codex, force) {
+        match update_one(&cfg, p, m, &claude, &codex, force) {
             Ok(ns) => notes.extend(ns),
             Err(e) => {
                 set(m, "error", e.to_string());
@@ -150,13 +154,14 @@ pub fn linked_targets(cfg: &Config) -> Vec<Target> {
         if !d.join(".git").exists() {
             continue;
         }
-        let man = read_manifests(&d, None);
+        let root = p.root(&d);
+        let man = read_manifests_at(&d, None, p.path.as_deref().unwrap_or(""));
         if p.target("claude") {
-            out.extend(man.claude_plugins.iter().map(|c| Target { key: p.id.clone(), app: "claude", name: c.name.clone(), folder: d.join(&c.path) }));
+            out.extend(man.claude_plugins.iter().map(|c| Target { key: p.id.clone(), app: "claude", name: c.name.clone(), folder: root.join(&c.path) }));
         }
         if p.target("codex") {
             if let Some(name) = &man.codex_name {
-                out.push(Target { key: p.id.clone(), app: "codex", name: name.clone(), folder: d.clone() });
+                out.push(Target { key: p.id.clone(), app: "codex", name: name.clone(), folder: root.clone() });
             }
         }
     }
@@ -246,16 +251,30 @@ pub fn validate_branch(branch: &str) -> R<String> {
     Ok(branch)
 }
 
-pub fn normalize_repo(repo: &str) -> R<String> {
-    let mut repo = repo.trim().to_string();
-    if Regex::new(r"^[\w.-]+/[\w.-]+$").unwrap().is_match(&repo) {
-        // owner/repo 简写
-        repo = format!("https://github.com/{repo}.git");
+/// ~/.yuwanplugins 里另有用途的名字，仓库不能占：skills 是统一存放技能的文件夹（anthropics/skills、openai/skills 都叫这个）
+const RESERVED_IDS: &[&str] = &["skills"];
+
+/// 管理列表里的 id，也是克隆在 ~/.yuwanplugins 里的文件夹名。这个仓库已经在管理就用它的；否则用仓库名，
+/// 名字被占了（别的仓库、保留的名字、已有的文件夹）就带上 owner，再不行加序号
+fn pick_id(src: &source::Source, cfg: &Config) -> String {
+    if let Some(p) = cfg.plugins.iter().find(|p| source::same_repo(&p.repo, &src.repo)) {
+        return p.id.clone();
     }
-    if !Regex::new(r"^(https://|http://|git@|ssh://|file://)").unwrap().is_match(&repo) {
-        bail!("仓库地址要以 https:// 或 git@ 开头，或者写成 owner/repo。");
+    let free = |id: &str| {
+        if id.is_empty() || id.starts_with('.') || RESERVED_IDS.contains(&id.to_lowercase().as_str()) || cfg.plugins.iter().any(|p| p.id.eq_ignore_ascii_case(id)) {
+            return false;
+        }
+        let d = PLUGINS_DIR.join(id);
+        // 文件夹已经在了：是这个仓库以前留下的克隆才接着用，别的（移植的副本、别的仓库）不碰
+        !d.exists() || source::same_repo(git_soft(&["config", "--get", "remote.origin.url"], Some(&d)).trim(), &src.repo)
+    };
+    let base = repo_id(&src.repo);
+    let mut names = vec![base.clone()];
+    if let Some((owner, repo)) = &src.github {
+        names.push(repo_id(&format!("{owner}-{repo}")));
     }
-    Ok(repo)
+    names.extend((2..30).map(|n| format!("{base}-{n}")));
+    names.into_iter().find(|id| free(id)).unwrap_or(base)
 }
 
 pub fn repo_id(repo: &str) -> String {
@@ -266,71 +285,370 @@ pub fn repo_id(repo: &str) -> String {
     Regex::new(r"[^\w.-]").unwrap().replace_all(last, "-").to_string()
 }
 
-/// 添加前先看看仓库：有哪些分支，每个分支的最新提交和插件版本号
-pub fn probe_repo(repo: &str) -> R<Value> {
-    let repo = normalize_repo(repo)?;
-    fs::create_dir_all(&*TMP_DIR)?;
-    let d = TMP_DIR.join(format!("probe-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
-    let result = (|| -> R<Vec<Value>> {
-        // 每个分支只取最新一个提交，大文件先不下载；插件清单很小，都在里面
-        git_t(&["clone", "--bare", "--depth=1", "--no-single-branch", "--filter=blob:limit=256k", &repo, &display(&d)], None, 300, true)?;
-        let default = git_soft(&["symbolic-ref", "--short", "HEAD"], Some(&d)).trim().to_string();
-        let fmt = "--format=%(refname:short)%1f%(objectname)%1f%(committerdate:iso-strict)%1f%(contents:subject)";
-        let mut branches = Vec::new();
-        for line in git(&["for-each-ref", fmt, "refs/heads"], Some(&d))?.lines() {
-            let mut parts: Vec<&str> = line.split('\x1f').collect();
-            parts.resize(4, "");
-            let (name, sha, date, subject) = (parts[0], parts[1], parts[2], parts[3]);
-            if name.is_empty() {
-                continue;
-            }
-            let man = read_manifests(&d, Some(name));
-            branches.push(json!({"name": name, "sha": sha, "date": date, "subject": subject, "default": name == default,
-                                 "version": man.version, "title": man.title, "description": man.description,
-                                 "claude": !man.claude_plugins.is_empty(), "codex": man.codex_name.is_some()}));
-        }
-        Ok(branches)
-    })();
-    let _ = rmtree(&d);
-    let mut branches = result?;
-    branches.sort_by(|a, b| gs(b, "date").cmp(gs(a, "date")));
-    branches.sort_by_key(|b| !gb(b, "default")); // 默认分支放最前，其余按最近提交排
-    let pid = repo_id(&repo);
-    let managed = load_config().plugins.iter().any(|p| p.id == pid);
-    Ok(json!({"repo": repo, "id": pid, "branches": branches, "managed": managed}))
+fn json_version(v: Option<&Value>) -> String {
+    match v {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
+    }
 }
 
-/// 接管一个插件仓库，装到 apps 里列出的 app
+/// 逐个细看的分支最多这么多：默认分支和最近有提交的，加上点名的、已经在跟的。有的仓库有几百个分支
+const PROBE_BRANCHES: usize = 12;
+/// 一个分支上最多列这么多技能
+const PROBE_SKILLS: usize = 200;
+
+/// 添加前先看看：粘进来的是什么（仓库、子目录、npx 命令），有哪些分支，每个分支上的插件清单和技能。
+/// 只下载各分支最新提交里的小文件。
+pub fn probe_repo(input: &str) -> R<Value> {
+    let src = source::parse(input)?;
+    let repo = src.repo.clone();
+    let cfg = load_config();
+    let pid = pick_id(&src, &cfg);
+    let existing = cfg.plugins.iter().find(|p| p.id == pid).cloned();
+    let managed_skills: Vec<String> = cfg.repo_skills(&pid).iter().filter_map(|s| s.path.clone()).collect();
+    let local = crate::skills::local_index();
+    fs::create_dir_all(&*TMP_DIR)?;
+    let d = TMP_DIR.join(format!("probe-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
+    let result = (|| -> R<Value> {
+        // 每个分支只取最新一个提交，大文件先不下载；插件清单和 SKILL.md 都很小
+        git_net(&["clone", "--bare", "--depth=1", "--no-single-branch", "--filter=blob:limit=256k", &repo, &display(&d)], None, 300, Some(&d))?;
+        let default = git_soft(&["symbolic-ref", "--short", "HEAD"], Some(&d)).trim().to_string();
+        let fmt = "--format=%(refname:short)%1f%(objectname)%1f%(committerdate:iso-strict)%1f%(contents:subject)%1f%(committerdate:unix)";
+        let mut heads: Vec<Vec<String>> = Vec::new();
+        for line in git(&["for-each-ref", fmt, "refs/heads"], Some(&d))?.lines() {
+            let mut parts: Vec<String> = line.split('\x1f').map(str::to_string).collect();
+            parts.resize(5, String::new());
+            if !parts[0].is_empty() {
+                heads.push(parts);
+            }
+        }
+        let names: Vec<String> = heads.iter().map(|h| h[0].clone()).collect();
+        let (ref_sel, path, ref_note) = source::resolve_ref(&src, &names, &default);
+        let mut notes: Vec<String> = ref_note.into_iter().collect();
+        // 默认分支放最前，其余按最近提交排
+        heads.sort_by_key(|h| std::cmp::Reverse(h[4].trim().parse::<i64>().unwrap_or(0)));
+        heads.sort_by_key(|h| h[0] != default);
+        let total = heads.len();
+        let mut keep: Vec<Vec<String>> = heads.iter().take(PROBE_BRANCHES).cloned().collect();
+        for must in [Some(ref_sel.clone()), existing.as_ref().map(|p| p.branch.clone())].into_iter().flatten() {
+            if !keep.iter().any(|h| h[0] == must) {
+                keep.extend(heads.iter().find(|h| h[0] == must).cloned());
+            }
+        }
+        // 各分支上大多是同一批文件，内容按哈希只读一次
+        let blobs: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> = Default::default();
+        let blob = |sha: &str| -> Option<String> {
+            if let Some(hit) = blobs.borrow().get(sha) {
+                return hit.clone();
+            }
+            let text = show_blob(&d, sha);
+            blobs.borrow_mut().insert(sha.to_string(), text.clone());
+            text
+        };
+        let mut branches = Vec::new();
+        for h in keep {
+            let (name, sha, date, subject) = (&h[0], &h[1], &h[2], &h[3]);
+            let tree = list_tree(&d, name);
+            let load = |rel: &str| tree.get(rel).and_then(|x| blob(x)).and_then(|t| serde_json::from_str::<Value>(&t).ok());
+            let has = |rel: &str| tree.contains_key(rel);
+            let root_man = manifests_with(&load, &has, "");
+            // 命令里点名了插件源里的某个插件：只要它那个子目录
+            let mut sub = path.clone();
+            if let (None, Some(want)) = (&sub, &src.plugin) {
+                match root_man.claude_plugins.iter().find(|c| c.name.eq_ignore_ascii_case(want)) {
+                    Some(c) if c.path != "." => sub = Some(c.path.clone()),
+                    Some(_) => {}
+                    None if *name == ref_sel => {
+                        let have: Vec<&str> = root_man.claude_plugins.iter().map(|c| c.name.as_str()).take(12).collect();
+                        notes.push(if have.is_empty() { format!("这个仓库的插件源里没有叫 {want} 的插件") } else { format!("这个仓库的插件源里没有叫 {want} 的插件，有：{}", have.join("、")) });
+                    }
+                    None => {}
+                }
+            }
+            // 指到了子目录：那里是插件就按那个插件算，是技能就记下来
+            let at = sub.as_deref().map(|p| (manifests_with(&load, &has, p), has(&format!("{p}/SKILL.md"))));
+            let (man, plugin_path) = match &at {
+                Some((m, _)) if m.is_plugin() => (m.clone(), sub.clone()),
+                _ => (root_man, None),
+            };
+            // 插件源里列的每个插件：说明、版本，文件夹里有没有 Codex 的清单
+            let plugins: Vec<Value> = man
+                .claude_plugins
+                .iter()
+                .map(|c| {
+                    let base = [plugin_path.as_deref().unwrap_or(""), if c.path == "." { "" } else { c.path.as_str() }].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join("/");
+                    let rel = |f: &str| if base.is_empty() { f.to_string() } else { format!("{base}/{f}") };
+                    let pj = load(&rel(".claude-plugin/plugin.json")).unwrap_or(Value::Null);
+                    json!({"name": c.name, "path": c.path, "description": gs(&pj, "description"), "version": json_version(pj.get("version")), "codex": has(&rel(CODEX_MANIFEST))})
+                })
+                .collect();
+            let mut dirs: Vec<(String, &String)> = tree.iter().filter_map(|(f, x)| crate::skills::skill_dir_of(f).map(|dir| (dir, x))).collect();
+            if let Some(p) = &path {
+                dirs.retain(|(x, _)| x == p || x.starts_with(&format!("{p}/")));
+            }
+            let skills: Vec<Value> = dirs
+                .iter()
+                .take(PROBE_SKILLS)
+                .map(|(dir, x)| {
+                    let front = blob(x).and_then(|t| crate::skills::parse_front(&t)).unwrap_or_default();
+                    let folder = dir.rsplit('/').next().unwrap_or("");
+                    let fname = if !front.name.is_empty() {
+                        front.name.clone()
+                    } else if folder.is_empty() {
+                        pid.clone()
+                    } else {
+                        folder.to_string()
+                    };
+                    let here = local.get(&fname.to_lowercase()).cloned().unwrap_or_default();
+                    json!({"name": fname, "path": dir, "description": front.description, "version": front.version, "local": here})
+                })
+                .collect();
+            branches.push(json!({"name": name, "sha": sha, "date": date, "subject": subject, "default": *name == default,
+                                 "version": man.version, "title": man.title, "description": man.description,
+                                 "claude": !man.claude_plugins.is_empty(), "codex": man.codex_name.is_some(),
+                                 "plugins": plugins, "plugin_path": plugin_path,
+                                 "at_path": at.as_ref().map(|(m, skill)| json!({"plugin": m.is_plugin(), "skill": skill})),
+                                 "skills": skills, "skills_total": dirs.len()}));
+        }
+        // 建议的装法：点名了技能、链接指到技能、仓库里没有插件只有技能，就装技能；否则装插件
+        let picked = branches.iter().find(|b| gs(b, "name") == ref_sel).or(branches.first());
+        let mode = match picked {
+            None => "none",
+            Some(b) => {
+                let is_plugin = gb(b, "claude") || gb(b, "codex");
+                let at_skill = b.get("at_path").and_then(|a| a.get("skill")).and_then(Value::as_bool).unwrap_or(false);
+                if src.wants_skills() || at_skill {
+                    "skills"
+                } else if is_plugin {
+                    "plugin"
+                } else if !ga(b, "skills").is_empty() {
+                    "skills"
+                } else {
+                    "none"
+                }
+            }
+        };
+        let managed_as = existing.as_ref().map(|p| if APPS.iter().any(|a| p.target(a)) { "plugin" } else { "skills" });
+        Ok(json!({
+            "repo": repo, "web": src.web, "id": pid,
+            "managed": existing.is_some(), "managed_as": managed_as,
+            "managed_branch": existing.as_ref().map(|p| p.branch.clone()), "managed_skills": managed_skills,
+            "mode": mode, "ref": ref_sel, "path": path, "notes": notes,
+            "input": {"via": src.via.name(), "text": src.describe(), "skills": src.skills, "plugin": src.plugin, "agents": src.agents, "notes": src.notes},
+            "branches": branches, "branches_total": total,
+        }))
+    })();
+    let _ = rmtree(&d);
+    result
+}
+
+/// 接管一个插件仓库，装到 apps 里列出的 app。repo 也可以是 npx skills add … 这样的命令，见 add_source
 pub fn add_plugin(repo: &str, branch: &str, apply: bool, apps: &[String]) -> R<Vec<String>> {
-    let repo = normalize_repo(repo)?;
-    let pid = repo_id(&repo);
-    let mut cfg = load_config();
-    if cfg.plugins.iter().any(|p| p.id == pid) {
-        bail!("{pid} 已经在管理列表里了。");
+    add_source(repo, branch, apply, apps, None, &[])
+}
+
+/// 一次添加要装什么：插件（在仓库的哪个子目录，None 是根目录），或者仓库里的几个技能文件夹
+enum Plan {
+    Plugin(Option<String>),
+    Skills(Vec<String>),
+}
+
+/// 只给了一个地址或命令（命令行、脚本），没在页面上选过：看克隆下来的内容决定装什么。hint 是链接里带的子目录
+fn decide(src: &source::Source, d: &Path, hint: Option<&str>) -> R<Plan> {
+    let list = |v: &[(String, String)]| v.iter().take(12).map(|(n, _)| n.as_str()).collect::<Vec<_>>().join("、");
+    let how = "在页面的添加里勾选，或者写成 npx skills add <仓库> --skill 名字";
+    // 点名了技能（npx skills add … --skill a,b，或者 skills.sh 的页面）
+    if !src.skills.is_empty() {
+        let found = crate::skills::find_in_clone(d, hint);
+        if found.is_empty() {
+            bail!("这个仓库里没有技能（找不到 SKILL.md）。");
+        }
+        if src.skills.iter().any(|w| w == "*") {
+            return Ok(Plan::Skills(found.into_iter().map(|(_, p)| p).collect()));
+        }
+        let mut picks = Vec::new();
+        for want in &src.skills {
+            let folder = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+            match found.iter().find(|(n, p)| n.eq_ignore_ascii_case(want) || folder(p).eq_ignore_ascii_case(want)) {
+                Some((_, p)) => picks.push(p.clone()),
+                None => bail!("仓库里没有叫 {want} 的技能。有：{}", list(&found)),
+            }
+        }
+        return Ok(Plan::Skills(picks));
     }
+    // 点名了插件源里的某个插件
+    if let Some(want) = &src.plugin {
+        let root = read_manifests_at(d, None, "");
+        return match root.claude_plugins.iter().find(|c| c.name.eq_ignore_ascii_case(want)) {
+            Some(c) => Ok(Plan::Plugin((c.path != ".").then(|| c.path.clone()))),
+            None => bail!("这个仓库的插件源里没有叫 {want} 的插件。有：{}", root.claude_plugins.iter().map(|c| c.name.as_str()).take(12).collect::<Vec<_>>().join("、")),
+        };
+    }
+    // 链接指到了子目录
+    if let Some(h) = hint {
+        if read_manifests_at(d, None, h).is_plugin() {
+            return Ok(Plan::Plugin(Some(h.to_string())));
+        }
+        if d.join(h).join("SKILL.md").is_file() {
+            return Ok(Plan::Skills(vec![h.to_string()]));
+        }
+        let found = crate::skills::find_in_clone(d, Some(h));
+        return match found.len() {
+            0 => bail!("{h} 里既没有插件清单，也没有 SKILL.md。"),
+            1 => Ok(Plan::Skills(vec![found[0].1.clone()])),
+            n => bail!("{h} 里有 {n} 个技能（{}）。{how}。", list(&found)),
+        };
+    }
+    if !src.wants_skills() && read_manifests_at(d, None, "").is_plugin() {
+        return Ok(Plan::Plugin(None));
+    }
+    let found = crate::skills::find_in_clone(d, None);
+    match found.len() {
+        0 if src.wants_skills() => bail!("这个仓库里没有技能（找不到 SKILL.md）。"),
+        0 => bail!("这个仓库里既没有 .claude-plugin/plugin.json，也没有 .codex-plugin/plugin.json，也找不到 SKILL.md，不像插件或技能仓库。"),
+        1 => Ok(Plan::Skills(vec![found[0].1.clone()])),
+        n if src.wants_skills() => bail!("仓库里有 {n} 个技能（{}）。用 --skill 名字 指定要哪个（--all 是全部），或者在页面的添加里勾选。", list(&found)),
+        n => bail!("这个仓库不是插件（没有插件清单），里面有 {n} 个技能（{}）。要装技能，{how}。", list(&found)),
+    }
+}
+
+/// 添加。input 是仓库地址，也可以是 npx skills add … 这样的命令（见 source.rs）。
+/// 页面上选好了的会传 path（插件在仓库里的子目录）或 skills（要装的技能文件夹）；都没传就看输入和仓库内容决定：
+/// 是插件就接管成受管插件，是技能就装成统一存放的技能。两种情况仓库都克隆到 ~/.yuwanplugins/<id>，以后跟着分支更新。
+pub fn add_source(input: &str, branch: &str, apply: bool, apps: &[String], path: Option<&str>, skills: &[String]) -> R<Vec<String>> {
+    let src = source::parse(input)?;
+    let repo = src.repo.clone();
+    let clean = |s: &str| s.trim().trim_start_matches("./").trim_matches('/').to_string();
+    let chosen = path.is_some() || !skills.is_empty();
+    // 命令里指定了装到哪个 app（npx skills add … -a codex）的，没在页面上选过就照它的
+    let apps: Vec<String> = if !chosen && !src.agents.is_empty() { apps.iter().filter(|a| src.agents.contains(a)).cloned().collect() } else { apps.to_vec() };
     if apps.is_empty() {
         bail!("至少选一个要安装的 app。");
     }
-    let branch = validate_branch(&if branch.trim().is_empty() { default_branch(&repo)? } else { branch.to_string() })?;
-    let mut p = PluginCfg { id: pid.clone(), repo: repo.clone(), branch: branch.clone(), targets: None, locked: false, extra: Map::new() };
-    for x in APPS {
-        p.set_target(x, apps.iter().any(|a| a == x));
+    let mut cfg = load_config();
+    let pid = pick_id(&src, &cfg);
+    let existing = cfg.plugins.iter().find(|p| p.id == pid).cloned();
+    let mut notes: Vec<String> = Vec::new();
+    // 跟哪个分支；链接里带的子目录（hint）
+    let (branch, hint) = match (&existing, branch.trim()) {
+        (Some(p), b) => {
+            // 已经在管理的仓库只有一份克隆，跟着一个分支
+            let other = |x: &str| format!("{pid} 已经跟着 {} 分支在管理了，不能同时再跟 {x} 分支。", p.branch);
+            if !b.is_empty() && b != p.branch {
+                bail!("{}", other(b));
+            }
+            let mut hint = None;
+            if !chosen {
+                if let Some(tree) = src.tree.as_deref() {
+                    let (r, sub, matched) = source::split_tree(tree, std::slice::from_ref(&p.branch));
+                    if !matched {
+                        bail!("{}", other(&r));
+                    }
+                    hint = if src.file { sub.and_then(|s| s.rsplit_once('/').map(|(d, _)| d.to_string())) } else { sub };
+                } else if let Some(h) = src.ref_hint.as_deref().filter(|h| *h != p.branch) {
+                    bail!("{}", other(h));
+                }
+            }
+            (p.branch.clone(), hint)
+        }
+        (None, b) if !b.is_empty() => {
+            let b = validate_branch(b)?;
+            let hint = if chosen { None } else { source::resolve_ref(&src, std::slice::from_ref(&b), &b).1 };
+            (b, hint)
+        }
+        (None, _) if src.tree.is_some() || src.ref_hint.is_some() => {
+            let (default, heads) = remote_heads(&repo)?;
+            let (b, hint, note) = source::resolve_ref(&src, &heads, &default);
+            notes.extend(note);
+            (validate_branch(&b)?, hint)
+        }
+        (None, _) => (validate_branch(&default_branch(&repo)?)?, None),
+    };
+    let is_new = existing.is_none();
+    if !is_new {
+        // 查询看的是远端最新的提交，本机的克隆可能落后：先同步一次。锁定的、里面有修改的不会拉，照旧用现有的文件
+        notes.extend(op_update(Some(&pid), false)?);
     }
+    let mut p = existing.clone().unwrap_or_else(|| PluginCfg {
+        id: pid.clone(),
+        repo: repo.clone(),
+        branch: branch.clone(),
+        targets: Some(APPS.iter().map(|a| (a.to_string(), false)).collect()),
+        locked: false,
+        path: None,
+        extra: Map::new(),
+    });
     let d = ensure_clone(&p)?;
-    let man = read_manifests(&d, None);
-    if man.claude_plugins.is_empty() && man.codex_name.is_none() {
-        rmtree(&d)?;
-        bail!("这个仓库里既没有 .claude-plugin/marketplace.json，也没有 .codex-plugin/plugin.json，不像插件仓库。");
-    }
-    cfg.plugins.push(p);
+    // 记进配置之前出了错，刚克隆的不留
+    let prepared = (|| -> R<(Plan, Vec<String>, Vec<String>)> {
+        let plan = if !skills.is_empty() {
+            Plan::Skills(skills.iter().map(|s| clean(s)).collect())
+        } else if let Some(sub) = path {
+            Plan::Plugin(Some(clean(sub)).filter(|s| !s.is_empty() && s != "."))
+        } else {
+            decide(&src, &d, hint.as_deref())?
+        };
+        match &plan {
+            Plan::Plugin(sub) => {
+                if existing.as_ref().is_some_and(|old| APPS.iter().any(|a| old.target(a))) {
+                    bail!("{pid} 已经在管理列表里了。");
+                }
+                if !read_manifests_at(&d, None, sub.as_deref().unwrap_or("")).is_plugin() {
+                    let place = sub.as_deref().map(|s| format!("子目录 {s} ")).unwrap_or_else(|| "这个仓库".into());
+                    bail!("{place}里既没有带 plugin.json 的 .claude-plugin，也没有 .codex-plugin/plugin.json，不像插件。");
+                }
+                p.path = sub.clone();
+                for x in APPS {
+                    p.set_target(x, apps.iter().any(|a| a == x));
+                }
+                match cfg.plugins.iter_mut().find(|x| x.id == pid) {
+                    Some(slot) => *slot = p.clone(), // 原来只拿了技能的仓库，现在也装成插件
+                    None => cfg.plugins.push(p.clone()),
+                }
+                let place = sub.as_deref().map(|s| format!("，子目录 {s}")).unwrap_or_default();
+                Ok((plan, vec![format!("[{pid}] 开始管理（{branch} 分支{place}）")], Vec::new()))
+            }
+            Plan::Skills(picks) => {
+                // 仓库克隆下来但不装成插件（两边的目标都是关的），选中的技能链接进统一存放处和两边
+                let mut done = Vec::new();
+                if is_new {
+                    cfg.plugins.push(p.clone());
+                    done.push(format!("[{pid}] 开始管理（{branch} 分支，只拿里面的技能）"));
+                }
+                let (names, linked) = crate::skills::add_from_repo(&mut cfg, &pid, &d, picks, &apps)?;
+                done.extend(linked);
+                Ok((plan, done, names))
+            }
+        }
+    })();
+    let (plan, done, names) = match prepared {
+        Ok(x) => x,
+        Err(e) => {
+            if is_new {
+                let _ = rmtree(&d);
+            }
+            return Err(e);
+        }
+    };
     remember_proxy(&mut cfg);
     save_config(&cfg)?;
-    let mut notes = vec![format!("[{pid}] 开始管理（{branch} 分支）")];
-    log(&notes[0]);
+    for n in &done {
+        log(n);
+    }
+    notes.extend(done);
     if apply {
-        notes.extend(op_update(Some(&pid), false)?);
-        let picked: Vec<String> = apps.iter().filter(|a| APPS.contains(&a.as_str())).cloned().collect();
-        notes.extend(verify_plugin(&pid, Some(&picked), true)?);
+        match plan {
+            Plan::Plugin(_) => {
+                notes.extend(op_update(Some(&pid), false)?);
+                notes.extend(verify_plugin(&pid, Some(&apps), true)?);
+            }
+            Plan::Skills(_) => {
+                for name in &names {
+                    notes.extend(verify_plugin(&format!("skill:{name}"), Some(&apps), true)?);
+                }
+            }
+        }
     }
     Ok(notes)
 }
@@ -525,11 +843,20 @@ pub fn act_uninstall(body: &Value) -> R<Vec<String>> {
     if let Some(v) = row.get("managed").filter(|m| m.is_object()) {
         let mut cfg = load_config();
         if let Some(i) = cfg.plugins.iter().position(|x| x.id == gs(v, "id")) {
-            // 受管但哪边都没装上，也一并不再管理
-            let p = cfg.plugins.remove(i);
-            save_config(&cfg)?;
-            notes.push(format!("[{}] 插件中心不再管理它，插件文件夹挪到 {}", gs(&row, "key"), retire(&p)?));
-            log(notes.last().expect("pushed"));
+            if cfg.repo_skills(gs(v, "id")).is_empty() {
+                // 受管但哪边都没装上，也一并不再管理
+                let p = cfg.plugins.remove(i);
+                save_config(&cfg)?;
+                notes.push(format!("[{}] 插件中心不再管理它，插件文件夹挪到 {}", gs(&row, "key"), retire(&p)?));
+                log(notes.last().expect("pushed"));
+            } else if APPS.iter().any(|a| cfg.plugins[i].target(a)) {
+                // 仓库里还有技能在用：克隆留着，只是不再装成插件
+                for a in APPS {
+                    cfg.plugins[i].set_target(a, false);
+                }
+                cfg.plugins[i].path = None;
+                save_config(&cfg)?;
+            }
         }
     }
     Ok(notes)
@@ -587,8 +914,19 @@ pub fn uninstall_app(key: &str, pid: &str, app: &str) -> R<Vec<String>> {
             }
             if rest.is_empty() {
                 let removed = p.clone();
-                cfg.plugins.retain(|x| x.id != removed.id);
-                notes.push(format!("两边都卸掉了，插件中心不再管理它，插件文件夹挪到 {}", retire(&removed)?));
+                if cfg.repo_skills(&removed.id).is_empty() {
+                    cfg.plugins.retain(|x| x.id != removed.id);
+                    notes.push(format!("两边都卸掉了，插件中心不再管理它，插件文件夹挪到 {}", retire(&removed)?));
+                } else {
+                    // 仓库里还有技能在用：克隆留着，只是不再装成插件
+                    if let Some(x) = cfg.plugins.iter_mut().find(|x| x.id == removed.id) {
+                        for y in APPS {
+                            x.set_target(y, false);
+                        }
+                        x.path = None;
+                    }
+                    notes.push("两边都卸掉了；这个仓库里还有技能在用，克隆留着继续跟着分支更新".into());
+                }
             }
             save_config(&cfg)?;
         }
@@ -604,8 +942,12 @@ pub fn uninstall_app(key: &str, pid: &str, app: &str) -> R<Vec<String>> {
 pub fn act_sync(body: &Value) -> R<Vec<String>> {
     let row = find_row(gs(body, "key"))?;
     if gs(&row, "kind") == "skill" {
-        // 独立的 skill 没有远端可拉：把该有的链接补上，再做一遍真实检查
-        let mut notes = crate::skills::sync(&row)?;
+        // 从仓库装的技能先拉取仓库；然后把该有的链接补上，再做一遍真实检查
+        let mut notes = Vec::new();
+        if let Some(m) = row.get("managed").filter(|m| m.is_object()) {
+            notes.extend(op_update(Some(gs(m, "id")), false)?);
+        }
+        notes.extend(crate::skills::sync(&row)?);
         notes.extend(verify_plugin(gs(&row, "key"), None, false)?);
         return Ok(notes);
     }
@@ -707,7 +1049,12 @@ pub fn open_target(target: &str) -> R<()> {
     if target.starts_with("http://") || target.starts_with("https://") {
         return platform::shell_open(target);
     }
-    bail!("只能打开插件中心的文件夹或网页链接。")
+    // 页面上点插件或技能的名字打开它的存放位置：只开插件中心自己的和两边 app 的目录，别处的路径不开
+    let p = std::path::Path::new(target);
+    if p.is_absolute() && p.is_dir() && [&*PLUGINS_DIR, &*HUB_DIR, &*CLAUDE_HOME, &*CODEX_HOME].iter().any(|root| under(p, root)) {
+        return platform::shell_open(target);
+    }
+    bail!("只能打开插件中心的文件夹、插件和技能的存放位置，或网页链接。")
 }
 
 fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
@@ -726,7 +1073,10 @@ fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
                 op_update(Some(plugin), force)
             }
         }
-        "add" => add_plugin(gs(body, "repo"), gs(body, "branch"), true, &body_apps(body)),
+        "add" => {
+            let skills: Vec<String> = ga(body, "skills").iter().filter_map(Value::as_str).map(str::to_string).collect();
+            add_source(gs(body, "repo"), gs(body, "branch"), true, &body_apps(body), body.get("path").and_then(Value::as_str), &skills)
+        }
         "install" => act_install(body),
         "uninstall" => act_uninstall(body),
         "sync" => act_sync(body),
@@ -780,5 +1130,28 @@ pub fn dispatch(name: &str, body: &Value) -> Result<Value, (u16, Value)> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn managed(id: &str, repo: &str) -> PluginCfg {
+        PluginCfg { id: id.into(), repo: repo.into(), branch: "main".into(), targets: None, locked: false, path: None, extra: Map::new() }
+    }
+
+    #[test]
+    fn ids_avoid_reserved_names_and_other_repos() {
+        let mut cfg = Config::default();
+        // skills 是统一存放技能的文件夹，仓库叫这个名字也不能占
+        assert_eq!(pick_id(&source::parse("anthropics/skills").unwrap(), &cfg), "anthropics-skills");
+        assert_eq!(pick_id(&source::parse("https://example.com/team/Skills.git").unwrap(), &cfg), "Skills-2");
+        // 已经在管理的仓库，换个写法还是它
+        cfg.plugins.push(managed("zz-pick-a", "git@github.com:Owner/zz-pick-a.git"));
+        assert_eq!(pick_id(&source::parse("https://github.com/owner/zz-pick-a").unwrap(), &cfg), "zz-pick-a");
+        // 名字被别的仓库占了就带上 owner
+        assert_eq!(pick_id(&source::parse("other/zz-pick-a").unwrap(), &cfg), "other-zz-pick-a");
+        assert_eq!(pick_id(&source::parse("npx skills add someone/zz-pick-b --skill x").unwrap(), &cfg), "zz-pick-b");
     }
 }

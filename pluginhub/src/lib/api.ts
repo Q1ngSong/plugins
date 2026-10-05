@@ -42,6 +42,10 @@ interface Commit { sha: string; short: string; subject: string; date: string }
 
 interface Managed {
   id: string;
+  /** 插件文件夹，克隆下来之后才有 */
+  folder?: string;
+  /** 插件在仓库里的子目录，没有就是根目录 */
+  path?: string | null;
   repo: string;
   web: string;
   slug: string;
@@ -65,7 +69,8 @@ export interface Plugin {
   /** 插件，还是独立的 skill（不属于任何插件、单独放在 app 的 skills 文件夹里） */
   kind: Kind;
   /** 独立的 skill 才有：ours 表示已经统一存放在 ~/.yuwanplugins/skills */
-  skill?: { ours: boolean; folder: string | null; dir: string } | null;
+  /** repo/path：从受管仓库里拿的技能，仓库的 id 和技能在仓库里的文件夹 */
+  skill?: { ours: boolean; folder: string | null; dir: string; repo?: string | null; path?: string | null } | null;
   name: string;
   version: string;
   description: string;
@@ -111,16 +116,65 @@ export interface State {
   log: string[];
 }
 
+/** 插件或技能存放在哪：插件中心管的那份；不归它管的就是装了它的 app 里那份，是链接的话取指向的文件夹 */
+export function storageFolder(p: Plugin): string | null {
+  // 从仓库装的技能两样都有：打开技能自己的文件夹，不是整个克隆
+  if (p.skill?.folder) return p.skill.folder;
+  if (p.managed?.folder) return p.managed.folder;
+  const a = p.apps.find((x) => x.installed && (x.target || x.path));
+  return a ? a.target || a.path || null : null;
+}
+
 /** 两边命令行的文件名：Windows 上带 .exe */
 export const exeName = (state: State, app: AppKey) => (state.hub.os === "windows" ? `${app}.exe` : app);
 /** 系统定时任务在这个系统上叫什么 */
 export const taskKind = (state: State) => (state.hub.os === "macos" ? "launchd 任务" : "系统定时任务");
+/** 系统的文件管理器叫什么（弹窗文案里用） */
+export const fileManager = (state: State) => (state.hub.os === "windows" ? "资源管理器" : state.hub.os === "macos" ? "访达" : "文件管理器");
+
+/** 查询时在仓库里找到的一个技能。local：本机哪里已经有同名的（agents 是 ~/.agents/skills，Codex 也读它） */
+export interface ProbeSkill { name: string; path: string; description: string; version: string; local: (AppKey | "agents")[] }
+/** 仓库的插件源里列的一个插件：path 是它在仓库里的子目录（. 是根目录），codex 表示那里也有 Codex 的清单 */
+export interface ProbePlugin { name: string; path: string; description: string; version: string; codex: boolean }
 
 export interface Branch {
   name: string; sha: string; date: string; subject: string; default: boolean;
   version: string; title: string; description: string; claude: boolean; codex: boolean;
+  /** 能装进 Claude Code 的插件：插件源里列的、文件夹里有 plugin.json 的 */
+  plugins: ProbePlugin[];
+  /** 链接或命令指到了某个子目录、那里是插件时，这个分支上插件所在的子目录 */
+  plugin_path: string | null;
+  /** 指到的子目录里是什么 */
+  at_path: { plugin: boolean; skill: boolean } | null;
+  /** 仓库里的技能（最多列 200 个）和总数 */
+  skills: ProbeSkill[];
+  skills_total: number;
 }
-export interface Probe { repo: string; id: string; managed: boolean; branches: Branch[] }
+
+export interface Probe {
+  repo: string;
+  web: string;
+  id: string;
+  /** 这个仓库已经在管理列表里：装成了插件，还是只拿了里面的技能；跟的是哪个分支 */
+  managed: boolean;
+  managed_as: "plugin" | "skills" | null;
+  managed_branch: string | null;
+  /** 已经从这个仓库装了的技能（仓库里的路径） */
+  managed_skills: string[];
+  /** 建议的装法：是插件就装插件；点名了技能、链接指到技能、仓库里只有技能就装技能 */
+  mode: "plugin" | "skills" | "none";
+  /** 链接或命令里指定的分支，没指定就是默认分支 */
+  ref: string;
+  /** 链接指到的子目录 */
+  path: string | null;
+  /** 查询时要提醒的话 */
+  notes: string[];
+  /** 粘进来的东西识别成了什么 */
+  input: { via: string; text: string; skills: string[]; plugin: string | null; agents: AppKey[]; notes: string[] };
+  /** 细看过的分支：默认分支、点名的、已经在跟的，加上最近更新的几个；branches_total 是仓库的分支总数 */
+  branches: Branch[];
+  branches_total: number;
+}
 
 /** 改动类接口都返回做了什么和最新状态 */
 export interface Result { notes: string[]; state: State }
@@ -164,7 +218,8 @@ export const api = {
   /** 只看 Codex 的技能清单超没超上限 */
   budget: () => call<Result>("/api/budget", {}),
   probe: (repo: string) => call<Probe>("/api/probe", { repo }),
-  add: (repo: string, branch: string, apps: AppKey[]) => call<Result>("/api/add", { repo, branch, apps }),
+  /** extra.path：插件在仓库里的子目录；extra.skills：只装这些技能（仓库里的文件夹） */
+  add: (repo: string, branch: string, apps: AppKey[], extra?: { path?: string; skills?: string[] }) => call<Result>("/api/add", { repo, branch, apps, ...extra }),
   auto: (enabled: boolean, interval_minutes: number) => call<Result>("/api/auto", { enabled, interval_minutes }),
   guard: (enabled: boolean) => call<Result>("/api/guard", { enabled }),
   lock: (plugin: string, locked: boolean) => call<Result>("/api/lock", { plugin, locked }),

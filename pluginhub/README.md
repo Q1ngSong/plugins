@@ -15,6 +15,7 @@ src-tauri/src/          程序（Rust，Tauri 2）
   claude.rs, codex.rs   两边的适配：状态、链接、卸载、真实检查（Codex 还看技能清单超没超上限）
   skills.rs             独立的技能：扫描两边的 skills 文件夹、统一存放、链接、删除、检查
   gitx.rs               git：克隆、拉取、本地修改检测、读清单、备份
+  source.rs             添加框里粘进来的东西怎么认：GitHub 的各种写法、子目录和技能的链接、npx skills add 命令（只认格式，不联网）
   usage.rs              扫描两边的会话记录，统计哪些项目用过插件
   schedule.rs           后台任务：设置、状态、常驻后台进程的锁；系统任务怎么建交给 platform/
   server.rs             浏览器版的页面服务：只听 127.0.0.1，校验 Host 和令牌
@@ -65,13 +66,13 @@ macOS 的 .app 只做了临时签名（ad-hoc），本机构建的能直接打�
 
 ## 测试
 
-单元测试覆盖读 SKILL.md 开头的解析、技能开销的估算，以及读 Codex 模型提示里的技能清单（缩写的路径、被截短和只剩名字的说明）：
+单元测试覆盖读 SKILL.md 开头的解析、技能开销的估算、读 Codex 模型提示里的技能清单（缩写的路径、被截短和只剩名字的说明）、添加框输入的识别（GitHub 的各种写法、`npx skills add` 命令）、插件清单的判断，以及会话记录里从仓库装的技能怎么计数：
 
 ```powershell
 cd src-tauri; cargo test
 ```
 
-`scripts/e2e.py` 是端到端测试，要本机有 Python，Windows 和 macOS 都能跑。它用一个本地 git 仓库当远端，通过 `pluginhub --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。真实检查有没有顺带记下 Codex 的技能清单，单独重新检查能不能用，也一并看。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
+`scripts/e2e.py` 是端到端测试，要本机有 Python，Windows 和 macOS 都能跑。它用一个本地 git 仓库当远端，通过 `pluginhub --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。真实检查有没有顺带记下 Codex 的技能清单，单独重新检查能不能用，也一并看。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。然后用一个只有技能的本地仓库，走一遍 `npx skills add` 命令识别、整条命令直接交给 add 装技能、远端更新后同步、`~/.agents/skills` 里有同名技能时不往 Codex 重复装、同一仓库再装一个、仓库后来有了插件清单时同一份克隆再装成插件、卸掉插件时技能还在用就留着克隆、技能删光后仓库一起不再管理。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
 
 ```powershell
 python scripts\e2e.py
@@ -90,3 +91,7 @@ python3 scripts/e2e.py   # macOS；程序不在默认位置时用环境变量 PL
 ## 插图
 
 根目录 README 的插图在 `assets/`，都是 SVG 文件，改文字可以直接改文件里的 `<text>`。
+
+## 主页
+
+[项目主页](https://q1ngsong.github.io/plugins/)是根目录的 `index.html`，由 `site/build.py` 把模板和根目录 README 拼出来。改了 README 之后运行 `python3 site/build.py` 重新生成，和 README 一起提交。详见 [site/README.md](../site/README.md)。

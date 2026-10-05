@@ -1,9 +1,11 @@
 /* 视图切换与顶部栏，结构参考 AgentPulse / cc-switch 的 App.tsx */
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Lock, LockOpen, PackagePlus, Plus, RefreshCw, Settings } from "lucide-react";
+import { ChevronLeft, Lock, LockOpen, PackagePlus, Plus, RefreshCw, Search, Settings, X } from "lucide-react";
+import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { IconButton, Spinner } from "@/components/common/bits";
 import { PluginActions } from "@/components/common/PluginActions";
 import { useConfirm } from "@/components/common/useConfirm";
@@ -12,11 +14,14 @@ import { PluginView } from "@/components/views/PluginView";
 import { InstallDialog } from "@/components/views/InstallDialog";
 import { AddView } from "@/components/views/AddView";
 import { SettingsView } from "@/components/views/SettingsView";
-import { api, APP_NAME, APPS, AppKey } from "@/lib/api";
+import { api, APP_NAME, APPS, AppKey, fileManager, isSkill, storageFolder } from "@/lib/api";
 import { useRun } from "@/lib/useRun";
 import { cn } from "@/lib/utils";
 
 type View = { name: "home" } | { name: "plugin"; key: string } | { name: "add"; repo?: string } | { name: "settings" };
+
+/** 顶栏标题点开的项目页 */
+const PROJECT_URL = "https://github.com/Q1ngSong/plugins";
 
 const KINDS: [KindFilter, string, string][] = [
   ["all", "全部", "插件和技能都显示"],
@@ -31,14 +36,25 @@ export default function App() {
   const [kind, setKind] = useState<KindFilter>(() => {
     try { return (localStorage.getItem("hub.kind") as KindFilter) || "all"; } catch { return "all"; }
   });
+  // 点插件名打开存放位置前要不要先问一下：弹窗里点过「以后都直接打开」，或在设置里关掉询问，就不问了
+  const [openDirect, setOpenDirect] = useState(() => {
+    try { return localStorage.getItem("hub.openFolder") === "direct"; } catch { return false; }
+  });
   const [view, setView] = useState<View>({ name: "home" });
+  const [query, setQuery] = useState("");
   const [installing, setInstalling] = useState<{ key: string; apps: AppKey[] } | null>(null);
   const { data: state, error } = useQuery({ queryKey: ["state"], queryFn: api.state, refetchInterval: 60_000 });
   const { confirm, dialog } = useConfirm();
   const { busy, run } = useRun();
+  const openProject = async () => {
+    if (await confirm({ title: "打开项目主页？", body: `在浏览器里打开插件中心在 GitHub 上的项目页：\n${PROJECT_URL}`, okText: "打开" })) {
+      api.open(PROJECT_URL).catch((e) => toast.error("打不开", { description: String(e.message ?? e) }));
+    }
+  };
 
   useEffect(() => { try { localStorage.setItem("hub.filter", filter); } catch { /* 存不了就算了 */ } }, [filter]);
   useEffect(() => { try { localStorage.setItem("hub.kind", kind); } catch { /* 存不了就算了 */ } }, [kind]);
+  useEffect(() => { try { localStorage.setItem("hub.openFolder", openDirect ? "direct" : "ask"); } catch { /* 存不了就算了 */ } }, [openDirect]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || view.name === "home" || document.querySelector("[role=dialog]")) return;
@@ -55,6 +71,20 @@ export default function App() {
   const plugin = view.name === "plugin" ? state.plugins.find((p) => p.key === view.key) : undefined;
   const current: View = view.name === "plugin" && !plugin ? { name: "home" } : view; // 插件被删掉后回首页
   const title = current.name === "plugin" ? plugin!.name : current.name === "add" ? "添加插件" : current.name === "settings" ? "设置" : "";
+  const folder = current.name === "plugin" && plugin ? storageFolder(plugin) : null;
+  const openFolder = async () => {
+    if (!folder || !plugin) return;
+    if (!openDirect) {
+      const answer = await confirm({
+        title: "打开存放位置？",
+        body: `在${fileManager(state)}里打开${isSkill(plugin) ? "这个技能" : "这个插件"}存放的文件夹：\n${folder}`,
+        okText: "打开", altText: "以后都直接打开",
+      });
+      if (!answer) return;
+      if (answer === "alt") setOpenDirect(true);
+    }
+    api.open(folder).catch((e) => toast.error("打不开", { description: String(e.message ?? e) }));
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -62,7 +92,8 @@ export default function App() {
         {current.name === "home" ? (
           <>
             <div className="flex min-w-0 items-center gap-2">
-              <span className="hidden whitespace-nowrap text-xl font-bold tracking-tight text-blue-500 md:inline">插件中心</span>
+              <button type="button" title="打开 GitHub 上的项目页" onClick={openProject}
+                className="hidden whitespace-nowrap text-xl font-bold tracking-tight text-blue-500 transition hover:text-blue-600 md:inline">插件中心</button>
               <Button variant="ghost" size="icon" className="h-8 w-8" title="设置" onClick={() => setView({ name: "settings" })}><Settings className="h-5 w-5" /></Button>
               <div className="ml-1 inline-flex gap-1 rounded-xl bg-muted p-1">
                 {KINDS.map(([k, label, tip]) => (
@@ -74,6 +105,17 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索插件或技能"
+                  title="按名字、介绍、仓库地址和两边的插件名搜，多个词用空格隔开；Esc 清空"
+                  className="h-8 w-40 pl-8 pr-7 md:w-52"
+                  onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } }} />
+                {query && (
+                  <button type="button" title="清空" onClick={() => setQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+                )}
+              </div>
               <div className="inline-flex gap-1 rounded-xl bg-muted p-1">
                 {(["all", ...APPS] as Filter[]).map((k) => {
                   const found = k === "all" || !!state.tools[k];
@@ -99,7 +141,12 @@ export default function App() {
           <>
             <div className="flex min-w-0 items-center gap-3">
               <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" title="返回（Esc）" onClick={() => setView({ name: "home" })}><ChevronLeft className="h-4 w-4" /></Button>
-              <h1 className="truncate text-lg font-semibold">{title}</h1>
+              {folder ? (
+                <button type="button" title={`打开存放位置：${folder}`} onClick={openFolder}
+                  className="truncate text-lg font-semibold transition hover:text-blue-600 hover:underline">{title}</button>
+              ) : (
+                <h1 className="truncate text-lg font-semibold">{title}</h1>
+              )}
             </div>
             {current.name === "plugin" && plugin && (
               <div className="flex items-center gap-2">
@@ -127,12 +174,12 @@ export default function App() {
 
       <main className={cn("mx-auto px-6 pb-20 pt-6", current.name === "home" ? "max-w-[1200px]" : "max-w-[860px]")}>
         <div key={current.name + (current.name === "plugin" ? current.key : "")} className={current.name === "home" ? "animate-fade-in" : "animate-slide-in"}>
-            {current.name === "home" && <HomeView state={state} filter={filter} kind={kind} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={() => setView({ name: "add" })}
+            {current.name === "home" && <HomeView state={state} filter={filter} kind={kind} query={query} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={() => setView({ name: "add" })}
               onInstall={(key) => { const p = state.plugins.find((x) => x.key === key); setView({ name: "plugin", key }); if (p) setInstalling({ key, apps: p.installable }); }} />}
             {current.name === "plugin" && plugin && <PluginView p={plugin} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
               onInstall={(apps) => setInstalling({ key: plugin.key, apps })} />}
             {current.name === "add" && <AddView initialRepo={current.repo} busy={busy} run={run} onDone={(key) => setView({ name: "plugin", key })} />}
-            {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} />}
+            {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} openDirect={openDirect} onOpenDirect={setOpenDirect} />}
         </div>
       </main>
       {installing && plugin && installing.key === plugin.key && (

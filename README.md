@@ -4,6 +4,8 @@
 
 Windows 和 macOS 桌面程序，安装包只有几 MB，下载就能用，不需要 Python。
 
+[项目主页](https://q1ngsong.github.io/plugins/) · [下载](../../releases) · [开发说明](pluginhub/README.md)
+
 ![插件只在 ~/.yuwanplugins 里存一份，Claude Code 和 Codex 都用目录链接指向它](assets/hero.svg)
 
 ## 起因
@@ -56,6 +58,8 @@ Codex 没有更新命令，我只好手动把插件文件夹整个换掉，换�
 
 你要做的只是挑一个分支，勾上要装的 app。以后它就跟着这个分支走。装完会马上做一次真实检查，后面会讲这是什么。
 
+添加框里不只认仓库地址。GitHub 上插件子目录或某个技能文件夹的链接（`/tree/分支/路径`）、`npx skills add owner/repo --skill 名字` 这样的命令、skills.sh 的页面链接、`claude plugin marketplace add …` 和 `codex plugin marketplace add …` 这两行命令，粘进去都能认出来：是插件就按插件装，是技能就列出仓库里的技能让你勾选。仓库的插件源里列了好几个插件时，挑一个，或者全部装上。分支特别多的仓库只列默认分支和最近更新的十来个，要别的分支就在地址后面加 `#分支名`。
+
 ### 只装在一边的插件
 
 ![移植：把只为 Codex 写的插件的 skill 复制出来，补上清单，再链接进 Claude Code](assets/install.svg)
@@ -71,6 +75,10 @@ skill 的格式两边通用，钩子、MCP 服务和 App 集成不是，所以�
 不属于任何插件、单独放在 skills 文件夹里的 skill，这里叫技能。Claude Code 读 `~/.claude/skills`，Codex 读 `~/.codex/skills`。技能比插件简单得多：没有清单，不用登记，一个带 SKILL.md 的文件夹就是全部。所以插件中心那套做法搬过来，几乎不用改。
 
 只装在一边的技能，点安装就能装到另一边。插件中心先把它挪进 `~/.yuwanplugins/skills` 统一存放，原来的位置换成链接，再给另一个 app 也放一个链接。之后两边读的是同一份，改一处两边生效。链接被删了，后台检查会补回来。
+
+技能也可以直接从 git 仓库装：粘一个 `npx skills add owner/repo --skill 名字` 命令，或者技能文件夹在 GitHub 上的链接，插件中心把仓库克隆到 `~/.yuwanplugins/<仓库名>`，统一存放处放一个指向那个文件夹的链接，两边再链接过去。以后更新就是在克隆里 `git pull`，和插件一样会检查新版本、同步、锁定、另存。仓库里别的技能都不用了，克隆也跟着挪进备份。
+
+Codex 除了 `~/.codex/skills`，还会读 `~/.agents/skills`，`npx skills add -g` 就把技能装在那里。插件中心不管那个文件夹；从仓库装技能时，如果那里已经有同名的，会标出来，不往 Codex 再装一份，免得同一个技能出现两次。
 
 两个 app 都没有单个技能的开关，放进去就生效。所以从某个 app 删掉技能，就是拆掉那边的链接；如果那里是个真实的文件夹，会挪进备份，不直接删。Codex 自带的技能归 Codex 自己管，这里只能看。
 
@@ -142,7 +150,7 @@ Codex 那边还顺带看一件事。它给技能清单留的地方只有上下�
 | `--run check` | 检查有没有新版本（锁定的跳过），再做一遍真实检查 |
 | `--run update [插件] [--force]` | 拉取最新，同步到两边 |
 | `--run guard` | 马上做一次后台检查 |
-| `--run add <仓库> [--branch B]` | 接管一个插件，不写分支就用默认分支 |
+| `--run add <仓库或命令> [--branch B]` | 接管一个插件，或者装仓库里的技能：认 GitHub 链接和 `npx skills add …` 命令，不写分支就用默认分支 |
 | `--run install [--interval 分钟]` | 打开自动更新 |
 | `--run uninstall` | 关掉后台检查、自动更新和后台任务 |
 | `--run serve [--port N] [--no-browser]` | 在浏览器里打开管理页面 |
@@ -165,7 +173,7 @@ Codex 麻烦一些。它只认自己缓存里的真实文件夹，整个缓存�
 | 位置 | 内容 |
 |---|---|
 | `~/.yuwanplugins/<名字>` | 插件本体，一份 git 克隆，两边都链接到这里 |
-| `~/.yuwanplugins/skills/<名字>` | 统一存放的技能，两边都链接到这里 |
+| `~/.yuwanplugins/skills/<名字>` | 统一存放的技能，两边都链接到这里。从仓库装的技能，这里是指向 `~/.yuwanplugins/<仓库名>` 里那个文件夹的链接 |
 | `~/.pluginhub/config.json` | 管理的插件和设置 |
 | `~/.pluginhub/hub.log` | 日志 |
 | `~/.pluginhub/usage.json` | 会话记录的扫描缓存，删了会重扫 |
@@ -176,7 +184,9 @@ Codex 麻烦一些。它只认自己缓存里的真实文件夹，整个缓存�
 ## 还没做的
 
 - 没有 Linux 版。
-- 技能还不能从 git 仓库添加，现在管的是本机已有的技能。
+- 添加时只认 GitHub 链接和 `npx skills add` 命令。插件源里的 `名字@插件源`、zip、npm 包这些来源，遇到了再说。
+- 一个仓库只管一个插件目录：插件源里列了好几个插件的仓库，要么全部装上，要么只装其中一个。
+- `npx skills` 自己装在 `~/.agents/skills` 里的技能，插件中心不显示，也不动。
 - 安装包没有代码签名，macOS 版也没有公证。
 - 只管 Claude Code 和 Codex 这两个 app。
 

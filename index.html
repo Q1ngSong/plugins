@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="插件中心：让 Claude Code 和 Codex 用同一份插件和技能。插件只存一份，两个 app 都用目录链接指过来，更新就是一次 git pull。Windows 和 macOS 桌面程序。">
+  <meta name="theme-color" content="#faf8f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#18181a" media="(prefers-color-scheme: dark)">
+  <title>插件中心 · 一份插件，两个 app</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2318181b'/%3E%3Ccircle cx='23' cy='32' r='9' fill='%23f0936c'/%3E%3Ccircle cx='41' cy='32' r='9' fill='%234fd1a8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="site/style.css">
+</head>
+<body>
+<a class="skip-link" href="#download">跳到下载</a>
+<header class="site-nav wrap">
+  <a class="wordmark" href="./" aria-label="插件中心首页">插件中心<span class="wordmark-tail"> / pluginhub</span></a>
+  <nav aria-label="主导航"><a href="#download">下载</a><a href="#readme">README</a><a href="https://github.com/Q1ngSong/plugins">GitHub <span aria-hidden="true">↗</span></a></nav>
+</header>
+<main class="wrap">
+  <section class="hero" aria-labelledby="project-title">
+    <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> OPEN SOURCE · PLUGIN &amp; SKILL MANAGER</p>
+    <h1 id="project-title">插件中心</h1>
+    <p class="hero-title">让 <span class="cc">Claude Code</span> 和 <span class="cx">Codex</span>，<br class="desktop-break">用同一份插件和技能。</p>
+    <p class="hero-description">插件在电脑上只存一份，两个 app 都用目录链接指过来。<br class="desktop-break">更新就是在这一份里 git pull，两边一起生效。</p>
+    <div class="hero-actions"><a class="button primary" href="#download">下载安装 <span aria-hidden="true">↘</span></a><a class="button secondary" href="https://github.com/Q1ngSong/plugins">查看源代码 <span aria-hidden="true">↗</span></a></div>
+    <img class="hero-figure" src="assets/hero.svg" alt="插件只在 ~/.yuwanplugins 里存一份，Claude Code 和 Codex 都用目录链接指向它" width="840" height="360">
+    <div class="hero-foot"><span>One copy, two apps.</span><span class="hero-tags">Windows / macOS <i>·</i> 几 MB <i>·</i> 不需要 Python</span></div>
+  </section>
+  <section id="download" class="examples" aria-labelledby="download-title">
+    <div class="section-heading"><div><p class="eyebrow">01 / DOWNLOAD</p><h2 id="download-title">下载安装</h2></div><p>下载就能用。电脑上要有 git，Claude Code 和 Codex 至少装一个。</p></div>
+    <div class="case-grid">
+      <a class="case-card" href="https://github.com/Q1ngSong/plugins/releases" aria-label="到 Releases 下载 Windows 版">
+        <div class="case-body"><div class="case-meta"><span>WINDOWS 10 / 11</span><span>X64</span></div>
+          <h3>Windows</h3><p class="case-subtitle"><code>PluginHub_&lt;版本&gt;_x64-setup.exe</code></p>
+          <p class="case-description">双击安装，装在当前用户目录下，用不着管理员权限。目录链接用的是 junction，普通用户就能建。</p><div class="case-tags"><span>NSIS 安装包</span><span>免管理员</span><span>计划任务</span></div>
+          <div class="case-cta">到 Releases 下载 <span aria-hidden="true">↗</span></div>
+        </div>
+      </a>
+      <a class="case-card" href="https://github.com/Q1ngSong/plugins/releases" aria-label="到 Releases 下载 macOS 版">
+        <div class="case-body"><div class="case-meta"><span>MACOS 10.15+</span><span>UNIVERSAL</span></div>
+          <h3>macOS</h3><p class="case-subtitle"><code>PluginHub_&lt;版本&gt;_universal.dmg</code></p>
+          <p class="case-description">打开后把「插件中心」拖进「应用程序」。Apple 芯片和 Intel 的 Mac 都能用，目录链接用的是符号链接。</p><div class="case-tags"><span>通用 dmg</span><span>Apple 芯片 / Intel</span><span>launchd</span></div>
+          <div class="case-cta">到 Releases 下载 <span aria-hidden="true">↗</span></div>
+        </div>
+      </a>
+    </div>
+    <p class="examples-note">安装包没有代码签名，第一次打开会被系统拦一下，怎么放行见下面的<a href="#安装">安装</a>一节。</p>
+  </section>
+  <section id="readme" class="readme-section" aria-label="README">
+    <article class="readme-content"><h2 id="起因">起因</h2>
+<p>我写了一个插件，叫 <a href="https://github.com/Q1ngSong/design-code-like-a-human">design-code-like-a-human</a>。同一份代码，同时装在 Claude Code 和 Codex 里。用了一阵，两边开始各过各的日子。</p>
+<p>Claude Code 那边一直停在 9 月 5 日的版本。仓库里明明有新提交，<code>claude plugin update</code> 每次都回答已经是最新。后来翻了它的源码才明白：它只认 <code>plugin.json</code> 里的版本号，而那个数字我一直没动过。</p>
+<p>Codex 没有更新命令，我只好手动把插件文件夹整个换掉，换之前先备份一份。等回过头看，<code>~/plugins</code> 下面已经躺着 11 个 <code>.backup-</code> 开头的文件夹。</p>
+<p>最难察觉的是开关。切换 API 服务商的工具会把 <code>~/.claude/settings.json</code> 整份重写，插件的启用状态就这么没了，不报错，也没有任何提示。</p>
+<p>这三件事说到底是一回事：一个插件在电脑上存了好几份，每份归不同的程序管。插件中心的办法是只留一份，放在 <code>~/.yuwanplugins</code>，两个 app 都用目录链接指过来。更新就是在这一份里 <code>git pull</code>，两边一起生效。</p>
+<h2 id="安装">安装</h2>
+<h3>Windows</h3>
+<p>到 <a href="https://github.com/Q1ngSong/plugins/releases">Releases</a> 下载 <code>PluginHub_&lt;版本&gt;_x64-setup.exe</code>，双击安装。装在当前用户目录下，用不着管理员权限。</p>
+<p>电脑上要有 <a href="https://git-scm.com/download/win">Git for Windows</a>，Claude Code 和 Codex 至少装一个。WebView2 是 Windows 10 和 11 自带的，万一缺了，安装程序会自己补上。</p>
+<p>安装包没有代码签名，第一次运行时 SmartScreen 会拦一下，点「更多信息」，再点「仍要运行」。</p>
+<h3>macOS</h3>
+<p>到 <a href="https://github.com/Q1ngSong/plugins/releases">Releases</a> 下载 <code>PluginHub_&lt;版本&gt;_universal.dmg</code>，打开后把「插件中心」拖进「应用程序」。Apple 芯片和 Intel 的 Mac 都能用，要 macOS 10.15 以上。</p>
+<p>电脑上要有 git（装过 Xcode 命令行工具或 Homebrew 的都有），Claude Code 和 Codex 至少装一个。两边的命令行放在哪都认得：Claude Code 桌面版自带的、官方脚本装到 <code>~/.local/bin</code> 的、Homebrew 或 npm 装的；Codex 桌面版和 ChatGPT 桌面版自带的、npm 装的。</p>
+<p>应用没有签名和公证，第一次打开时 macOS 会说无法验证开发者：在访达里右键点它，选「打开」；或者在终端运行 <code>xattr -dr com.apple.quarantine /Applications/插件中心.app</code>。</p>
+<h2 id="用起来">用起来</h2>
+<h3>打开就能看到全部</h3>
+<p><img src="assets/home.svg" alt="首页：本机所有插件排成一面卡片墙，标出装在哪个 app、有没有新版本" /></p>
+<p>首页是一面卡片墙。本机装的插件和技能都在这里，Claude Code 的和 Codex 的放在一起，同名的合成一张。卡片底部的小色块说明它装在哪边：橙色是 Claude Code，绿色是 Codex。顶上可以只看插件或只看技能，也可以只看某一个 app 里的。</p>
+<p>右上角三个按钮：删除、同步、打开仓库。只装在一边的插件会多一个安装按钮，用来装到另一边。有新版本、被锁定、文件夹里有改动、检查没通过，卡片上都会直接标出来。</p>
+<p>点开卡片是详情页：每个 app 里装的是哪个版本，最近一次检查的结果，还有哪些项目用过它。项目是从两边的会话记录里数出来的。</p>
+<h3>加插件时不用填版本号</h3>
+<p><img src="assets/add.svg" alt="添加插件：填仓库地址，列出各分支的版本和最新提交，选一个分支和要装的 app" /></p>
+<p>贴一个仓库地址，点查询。插件中心会把每个分支最新的那次提交拉下来看一眼，只读清单文件，不下载大文件。每个分支上插件是什么版本、最后一次提交写了什么、支持哪个 app，都列在那里。</p>
+<p>你要做的只是挑一个分支，勾上要装的 app。以后它就跟着这个分支走。装完会马上做一次真实检查，后面会讲这是什么。</p>
+<p>添加框里不只认仓库地址。GitHub 上插件子目录或某个技能文件夹的链接（<code>/tree/分支/路径</code>）、<code>npx skills add owner/repo --skill 名字</code> 这样的命令、skills.sh 的页面链接、<code>claude plugin marketplace add …</code> 和 <code>codex plugin marketplace add …</code> 这两行命令，粘进去都能认出来：是插件就按插件装，是技能就列出仓库里的技能让你勾选。仓库的插件源里列了好几个插件时，挑一个，或者全部装上。分支特别多的仓库只列默认分支和最近更新的十来个，要别的分支就在地址后面加 <code>#分支名</code>。</p>
+<h3>只装在一边的插件</h3>
+<p><img src="assets/install.svg" alt="移植：把只为 Codex 写的插件的 skill 复制出来，补上清单，再链接进 Claude Code" /></p>
+<p>插件自带两边的清单，就直接链接过去。只为一个 app 写的，插件中心会把它的 skill 复制一份到 <code>~/.yuwanplugins</code>，补上另一边的清单，再链接进去。</p>
+<p>skill 的格式两边通用，钩子、MCP 服务和 App 集成不是，所以这些不会带过去。有的插件全靠 MCP 或钩子干活，一个 skill 也没有，这种装不过去，页面上会写明原因。原插件更新以后，点一下同步就会重新复制。</p>
+<h3>独立的技能</h3>
+<p><img src="assets/skill.svg" alt="只装在 Codex 里的技能，装到 Claude Code 时先挪进 ~/.yuwanplugins/skills 统一存放，两边都换成链接" /></p>
+<p>不属于任何插件、单独放在 skills 文件夹里的 skill，这里叫技能。Claude Code 读 <code>~/.claude/skills</code>，Codex 读 <code>~/.codex/skills</code>。技能比插件简单得多：没有清单，不用登记，一个带 SKILL.md 的文件夹就是全部。所以插件中心那套做法搬过来，几乎不用改。</p>
+<p>只装在一边的技能，点安装就能装到另一边。插件中心先把它挪进 <code>~/.yuwanplugins/skills</code> 统一存放，原来的位置换成链接，再给另一个 app 也放一个链接。之后两边读的是同一份，改一处两边生效。链接被删了，后台检查会补回来。</p>
+<p>技能也可以直接从 git 仓库装：粘一个 <code>npx skills add owner/repo --skill 名字</code> 命令，或者技能文件夹在 GitHub 上的链接，插件中心把仓库克隆到 <code>~/.yuwanplugins/&lt;仓库名&gt;</code>，统一存放处放一个指向那个文件夹的链接，两边再链接过去。以后更新就是在克隆里 <code>git pull</code>，和插件一样会检查新版本、同步、锁定、另存。仓库里别的技能都不用了，克隆也跟着挪进备份。</p>
+<p>Codex 除了 <code>~/.codex/skills</code>，还会读 <code>~/.agents/skills</code>，<code>npx skills add -g</code> 就把技能装在那里。插件中心不管那个文件夹；从仓库装技能时，如果那里已经有同名的，会标出来，不往 Codex 再装一份，免得同一个技能出现两次。</p>
+<p>两个 app 都没有单个技能的开关，放进去就生效。所以从某个 app 删掉技能，就是拆掉那边的链接；如果那里是个真实的文件夹，会挪进备份，不直接删。Codex 自带的技能归 Codex 自己管，这里只能看。</p>
+<p>真实检查也照做。Codex 那边看模型提示里有没有它、读的是不是统一存放的那份；Claude Code 没有列出技能的命令，只能核对链接和 SKILL.md。哪些项目用过它、用了几次，照样从会话记录里数出来。</p>
+<h3>更新是一次 git pull</h3>
+<p><img src="assets/sync.svg" alt="以前每个 app 一份副本，各更各的；现在 git pull 一次，两边都读到新文件" /></p>
+<p>两个 app 链接的是同一个文件夹，所以更新就是在这个文件夹里拉一次代码。不复制，不重装，也不看版本号。上游改写了历史（force push），照样跟得上。</p>
+<p>拉取之后，开着的对话下次读 SKILL.md 就是新内容。新增或删掉 skill、改了描述或钩子，要新开一个对话才看得到；Claude Code 里也可以用 <code>/reload-plugins</code>。</p>
+<p>想省事的话，在设置里打开自动更新，它会按间隔在后台拉取。</p>
+<h3>在插件文件夹里改了东西</h3>
+<p><img src="assets/lock.svg" alt="插件文件夹里有修改时，同步停止拉取，可以锁定保留修改，也可以另存一份再还原" /></p>
+<p><code>~/.yuwanplugins</code> 里的插件是给 app 读的，最好别在里面改。可人总会手痒，改一行看看效果，顺手再提交一下。</p>
+<p>插件中心认得出这些改动：没提交的文件、本地提交、切到了别的分支。一旦发现，同步就不再拉取，免得把你的修改冲掉，然后请你二选一。</p>
+<p><strong>锁定，保留修改。</strong> 从此不检查、不同步，同步按钮变灰。想恢复，再点一下详情页右上角的锁。</p>
+<p><strong>另存并还原。</strong> 整个文件夹连同 <code>.git</code> 存进 <code>~/.pluginhub/saved</code>，本地提交也在里面。插件文件夹回到仓库里的样子，继续跟着分支更新。</p>
+<p>锁定只管拉取。链接或配置被别的程序改坏了，后台检查照样会修。</p>
+<h3>它真的加载了吗</h3>
+<p><img src="assets/verify.svg" alt="真实检查：Claude Code 跑 plugin list 和 plugin details，Codex 跑 plugin list 和 debug prompt-input" /></p>
+<p>配置文件写对了，不代表 app 真的把插件加载了进去。插件中心的办法是直接去问 app。</p>
+<p>Claude Code 那边，跑 <code>claude plugin list</code> 和 <code>claude plugin details</code>，看插件在不在、开没开，再把它列出的 skill 跟插件里的逐个对上。Codex 那边，除了 <code>codex plugin list</code>，还让它把真正交给模型的提示渲染出来（<code>codex debug prompt-input</code>），在里面一个个找 skill，并确认每个 SKILL.md 的路径都在 <code>~/.yuwanplugins</code> 里，读的不是缓存里的旧副本。</p>
+<p>装完、检查更新、后台检查时都会跑一遍。详情页里每个 app 的卡片上也能随时点「现在检查」。没通过的插件，首页卡片上会标「要检查」。</p>
+<p>Codex 那边还顺带看一件事。它给技能清单留的地方只有上下文的 2%，超了也不报错，先截短每条说明，再只留名字，最后把排在后面的整条拿掉。模型是看着说明挑技能的，说明一短就挑不准。插件中心把提示里的每条说明和 SKILL.md 原文比一遍，发现被截短，就在首页提醒你，并列出 Codex 里占得多的几个，删掉用不上的就好。每个插件和技能每次会话大约占多少，详情页里写着。Claude Code 也有类似的上限，是上下文的 1%，可它没有渲染提示的命令，插件中心查不了，要看就在 Claude Code 里跑 <code>/doctor</code>。</p>
+<h3>配置被别的程序改掉</h3>
+<p><img src="assets/guard.svg" alt="后台检查：别的程序改掉配置后，每天一次的检查发现问题、修好，并在日志和详情页里写明" /></p>
+<p>这个功能是被前面那个切换服务商的工具逼出来的。在设置里打开「后台检查」，插件中心每天把两边的插件配置过一遍：<code>settings.json</code> 和 <code>config.toml</code> 有没有被重写，Codex 的个人插件源有没有被改，链接还在不在。</p>
+<p>发现问题就修好，把是哪个文件、什么时候改的记进日志，再做一次真实检查。详情页里对应的 app 卡片上也会写一句：什么时候发现了什么，修好了没有。</p>
+<p>后台任务在 Windows 上用计划任务，没有权限建计划任务的机器上改成开机自启的后台进程；在 macOS 上用 launchd 的用户级任务（<code>~/Library/LaunchAgents/com.yuwan.pluginhub.plist</code>），登录后和每隔一段时间各跑一次。跑的都是装好的那个程序。</p>
+<h3>两个删除按钮</h3>
+<p><img src="assets/delete.svg" alt="首页卡片上的删除从所有 app 删掉；详情页里 app 卡片上的删除只动那一个 app" /></p>
+<p>首页卡片上的删除，会把插件从所有 app 里删掉；详情页里每个 app 卡片右上角的删除，只动那一个 app。</p>
+<p>删除只去掉链接和登记，不碰文件。插件中心不再管理的插件，文件夹挪进 <code>~/.pluginhub/backups</code>，每个插件留最近 3 份。</p>
+<h3>命令行</h3>
+<p><img src="assets/cli.svg" alt="命令行：pluginhub.exe --run status 打印每个插件在两边的状态" /></p>
+<p>同一个程序加上 <code>--run</code> 就是命令行，后台任务用的也是它。Windows 上装好后它在 <code>%LOCALAPPDATA%\插件中心\pluginhub.exe</code>；macOS 上在 <code>/Applications/插件中心.app/Contents/MacOS/pluginhub</code>，嫌长可以在 <code>~/.zshrc</code> 里加一行 <code>alias pluginhub='/Applications/插件中心.app/Contents/MacOS/pluginhub'</code>。</p>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>做什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--run status</code></td>
+<td>打印状态</td>
+</tr>
+<tr>
+<td><code>--run check</code></td>
+<td>检查有没有新版本（锁定的跳过），再做一遍真实检查</td>
+</tr>
+<tr>
+<td><code>--run update [插件] [--force]</code></td>
+<td>拉取最新，同步到两边</td>
+</tr>
+<tr>
+<td><code>--run guard</code></td>
+<td>马上做一次后台检查</td>
+</tr>
+<tr>
+<td><code>--run add &lt;仓库或命令&gt; [--branch B]</code></td>
+<td>接管一个插件，或者装仓库里的技能：认 GitHub 链接和 <code>npx skills add …</code> 命令，不写分支就用默认分支</td>
+</tr>
+<tr>
+<td><code>--run install [--interval 分钟]</code></td>
+<td>打开自动更新</td>
+</tr>
+<tr>
+<td><code>--run uninstall</code></td>
+<td>关掉后台检查、自动更新和后台任务</td>
+</tr>
+<tr>
+<td><code>--run serve [--port N] [--no-browser]</code></td>
+<td>在浏览器里打开管理页面</td>
+</tr>
+<tr>
+<td><code>--run api &lt;接口&gt; [JSON]</code></td>
+<td>直接调用页面用的接口，输出 JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Windows 上它是个窗口程序，cmd 不会等它跑完。要看输出，在 PowerShell 里末尾加 <code>| Out-Host</code>，或者用 <code>cmd /c start /wait</code>。macOS 的终端里直接运行就行。</p>
+<h2 id="背后的做法">背后的做法</h2>
+<p>插件中心靠的是目录链接：Windows 用 junction，普通用户就能建；macOS 用符号链接。删掉链接不会动到它指向的文件夹。</p>
+<p>Claude Code 会把 <code>~/.claude/skills</code> 下带 <code>.claude-plugin/plugin.json</code> 的文件夹就地加载成 <code>&lt;名字&gt;@skills-dir</code>，不往缓存里复制。所以链接一放，它读的就是 <code>~/.yuwanplugins</code> 里的那份。</p>
+<p>Codex 麻烦一些。它只认自己缓存里的真实文件夹，整个缓存目录换成链接，会被它悄悄忽略。插件中心先用 <code>codex plugin add</code> 正常装一份，再把缓存里的 <code>skills/</code>、<code>hooks/</code> 这些子文件夹逐个换成链接，清单文件还是复制的。Codex 顺着子文件夹的链接读文件，改动就能直接生效。插件的版本号变了，缓存目录的名字跟着变，插件中心会重新装一次。</p>
+<p>技能省事得多。两个 app 都认链接过来的技能文件夹，Codex 报告的也是链接指向的真实路径，所以在两边的 skills 文件夹里各放一个链接就够了。</p>
+<h2 id="文件放在哪">文件放在哪</h2>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>~/.yuwanplugins/&lt;名字&gt;</code></td>
+<td>插件本体，一份 git 克隆，两边都链接到这里</td>
+</tr>
+<tr>
+<td><code>~/.yuwanplugins/skills/&lt;名字&gt;</code></td>
+<td>统一存放的技能，两边都链接到这里。从仓库装的技能，这里是指向 <code>~/.yuwanplugins/&lt;仓库名&gt;</code> 里那个文件夹的链接</td>
+</tr>
+<tr>
+<td><code>~/.pluginhub/config.json</code></td>
+<td>管理的插件和设置</td>
+</tr>
+<tr>
+<td><code>~/.pluginhub/hub.log</code></td>
+<td>日志</td>
+</tr>
+<tr>
+<td><code>~/.pluginhub/usage.json</code></td>
+<td>会话记录的扫描缓存，删了会重扫</td>
+</tr>
+<tr>
+<td><code>~/.pluginhub/backups</code></td>
+<td>不再管理的插件和以前复制出来的旧文件夹，每个插件留 3 份</td>
+</tr>
+<tr>
+<td><code>~/.pluginhub/saved</code></td>
+<td>另存并还原时存下的修改，不会自动删</td>
+</tr>
+<tr>
+<td><code>~/Library/LaunchAgents/com.yuwan.pluginhub.plist</code></td>
+<td>macOS 上后台任务的 launchd 描述文件，关掉后台检查和自动更新就会删掉</td>
+</tr>
+</tbody>
+</table>
+<h2 id="还没做的">还没做的</h2>
+<ul>
+<li>没有 Linux 版。</li>
+<li>添加时只认 GitHub 链接和 <code>npx skills add</code> 命令。插件源里的 <code>名字@插件源</code>、zip、npm 包这些来源，遇到了再说。</li>
+<li>一个仓库只管一个插件目录：插件源里列了好几个插件的仓库，要么全部装上，要么只装其中一个。</li>
+<li><code>npx skills</code> 自己装在 <code>~/.agents/skills</code> 里的技能，插件中心不显示，也不动。</li>
+<li>安装包没有代码签名，macOS 版也没有公证。</li>
+<li>只管 Claude Code 和 Codex 这两个 app。</li>
+</ul>
+<h2 id="开发">开发</h2>
+<p>界面是 React，程序是 Rust（Tauri 2）。怎么构建、打包、测试，见 <a href="https://github.com/Q1ngSong/plugins/blob/main/pluginhub/README.md">pluginhub/README.md</a>。</p>
+<h2 id="许可">许可</h2>
+<p><a href="https://github.com/Q1ngSong/plugins/blob/main/LICENSE">MIT</a></p>
+</article>
+  </section>
+</main>
+<footer class="site-footer wrap"><a class="wordmark" href="#project-title">插件中心</a><p>一份插件，两个 app。</p><a href="https://github.com/Q1ngSong/plugins/blob/main/LICENSE">MIT License</a></footer>
+</body>
+</html>

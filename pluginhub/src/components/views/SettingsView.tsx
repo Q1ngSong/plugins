@@ -16,7 +16,11 @@ const Card = ({ title, children, desc }: { title: string; desc?: string; childre
   </section>
 );
 
-export function SettingsView({ state, busy, run }: { state: State; busy: string | null; run: Run }) {
+export function SettingsView({ state, busy, run, openDirect, onOpenDirect }: {
+  state: State; busy: string | null; run: Run;
+  /** 点插件名时直接打开存放位置，不先问一下（弹窗里点「以后都直接打开」也会打开它） */
+  openDirect: boolean; onOpenDirect: (v: boolean) => void;
+}) {
   const auto = state.hub.auto;
   const on = !!(auto.enabled && auto.installed);
   const minutes = auto.interval_minutes || 60;
@@ -71,6 +75,13 @@ export function SettingsView({ state, busy, run }: { state: State; busy: string 
               <Button variant="ghost" size="sm" onClick={() => open(t)}><FolderOpen className="h-3.5 w-3.5" />打开</Button>
             </div>
           ))}
+          <div className="mt-1 flex items-center gap-3 border-t pt-3">
+            <Switch checked={openDirect} onCheckedChange={onOpenDirect} />
+            <div className="min-w-0">
+              <div>在详情页点插件或技能的名字时，直接打开它的存放位置</div>
+              <div className="text-xs text-muted-foreground">关闭时会先弹窗问一下；弹窗里点「以后都直接打开」也会把这个开关打开。</div>
+            </div>
+          </div>
         </div>
       </Card>
 

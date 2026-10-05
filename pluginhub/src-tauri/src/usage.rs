@@ -25,8 +25,16 @@ static YUWAN_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r"\.yuw
 static CODEX_SKILL_USE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?:\.codex{SEP}skills(?:{SEP}\.system)?|\.yuwanplugins{SEP}skills){SEP}([\w-][\w.-]*){SEP}")).unwrap()
 });
+/// 从仓库装的技能，Codex 读的是克隆里的文件：.yuwanplugins/<仓库>/<技能文件夹>/SKILL.md（技能在仓库根目录的没有中间那段）
+static REPO_SKILL_USE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"\.yuwanplugins{SEP}([\w.-]+){SEP}(?:((?:[\w.-]+{SEP})*?[\w.-]+){SEP})?SKILL\.md")).unwrap());
 /// 统计规则变了就改这个数，旧的扫描缓存会作废重扫
-const SCAN_VERSION: u64 = 4;
+const SCAN_VERSION: u64 = 5;
+
+/// 从仓库装的技能在统计里的键：仓库在 ~/.yuwanplugins 里的文件夹名，加技能在仓库里的路径
+pub fn repo_skill_key(repo: &str, path: &str) -> String {
+    format!("repo-skill:{repo}:{}", path.trim_matches('/'))
+}
 
 #[derive(Serialize, Clone, Debug)]
 pub struct ProjRow {
@@ -122,18 +130,27 @@ pub fn scan_session(path: &Path, app: &str) -> std::io::Result<BTreeMap<String, 
         }
         return Ok(hits);
     }
-    for (pattern, kind) in [(&*CODEX_USE, 0), (&*YUWAN_USE, 1), (&*CODEX_SKILL_USE, 2)] {
+    for (pattern, kind) in [(&*CODEX_USE, 0), (&*YUWAN_USE, 1), (&*CODEX_SKILL_USE, 2), (&*REPO_SKILL_USE, 3)] {
         for m in pattern.captures_iter(&data) {
-            if kind == 1 && &m[1] == b"skills" {
-                continue; // .yuwanplugins/skills/ 下是独立的 skill，由下一条规则记
+            if (kind == 1 || kind == 3) && &m[1] == b"skills" {
+                continue; // .yuwanplugins/skills/ 下是独立的 skill，由第三条规则记
             }
-            let start = data[..m.get(0).unwrap().start()].iter().rposition(|&b| b == b'\n').map(|i| i + 1).unwrap_or(0);
-            let head = &data[start..(start + 250).min(data.len())];
+            let at = m.get(0).unwrap().start();
+            let start = data[..at].iter().rposition(|&b| b == b'\n').map(|i| i + 1).unwrap_or(0);
+            // 只看这一行的开头：行很短时不能把下一行的也算进来
+            let end = data[at..].iter().position(|&b| b == b'\n').map(|i| at + i).unwrap_or(data.len());
+            let head = &data[start..(start + 250).min(end)];
             // 只算工具调用；提示词里的插件和 skill 清单每个会话都有，不算用过
             if contains(head, br#""type":"custom_tool_call""#) || contains(head, br#""type":"function_call""#) {
                 let key = match kind {
                     0 => format!("{}@{}", String::from_utf8_lossy(&m[2]), String::from_utf8_lossy(&m[1])),
                     1 => format!("yuwan:{}", String::from_utf8_lossy(&m[1])),
+                    3 => {
+                        // 路径里的分隔符可能是 /、\ 或转义过的 \\，统一成 /
+                        let path = m.get(2).map(|g| String::from_utf8_lossy(g.as_bytes()).to_string()).unwrap_or_default();
+                        let parts: Vec<&str> = path.split(['/', '\\']).filter(|x| !x.is_empty()).collect();
+                        repo_skill_key(&String::from_utf8_lossy(&m[1]), &parts.join("/"))
+                    }
                     _ => format!("skill:{}", String::from_utf8_lossy(&m[1])),
                 };
                 *hits.entry(key).or_insert(0) += 1;
@@ -251,4 +268,31 @@ pub fn project_rows(rows: &ProjMap) -> Vec<Value> {
     let mut list: Vec<&ProjRow> = rows.values().collect();
     list.sort_by(|a, b| b.last.partial_cmp(&a.last).unwrap_or(std::cmp::Ordering::Equal));
     list.into_iter().map(|r| serde_json::to_value(r).unwrap_or(Value::Null)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_reads_of_repo_skills_are_counted_per_skill() {
+        let dir = std::env::temp_dir().join(format!("pluginhub-usage-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("rollout-test.jsonl");
+        let lines = [
+            // 提示词里的技能清单不算用过
+            r#"{"type":"message","content":"- web: x (file: /Users/a/.yuwanplugins/agent-skills/skills/web/SKILL.md)"}"#,
+            r#"{"type":"function_call","name":"shell","arguments":"{\"command\":[\"cat\",\"/Users/a/.yuwanplugins/agent-skills/skills/web/SKILL.md\"]}"}"#,
+            r#"{"type":"function_call","name":"shell","arguments":"{\"command\":[\"type\",\"C:\\\\Users\\\\a\\\\.yuwanplugins\\\\one-skill\\\\SKILL.md\"]}"}"#,
+            r#"{"type":"function_call","name":"shell","arguments":"{\"command\":[\"cat\",\"/Users/a/.yuwanplugins/skills/moved/SKILL.md\"]}"}"#,
+        ];
+        fs::write(&f, lines.join("\n")).unwrap();
+        let hits = scan_session(&f, "codex").unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(hits.get("repo-skill:agent-skills:skills/web"), Some(&1));
+        assert_eq!(hits.get("yuwan:agent-skills"), Some(&1));
+        assert_eq!(hits.get("repo-skill:one-skill:"), Some(&1)); // 技能就在仓库根目录
+        assert_eq!(hits.get("skill:moved"), Some(&1)); // 统一存放的照旧按名字记
+        assert!(!hits.keys().any(|k| k.starts_with("repo-skill:skills")));
+    }
 }

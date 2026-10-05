@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock, Plus, Puzzle, Scissors, ScrollText, ShieldCheck, Wrench } from "lucide-react";
+import { AlertTriangle, Lock, Plus, Puzzle, Scissors, ScrollText, Search, ShieldCheck, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppChip, Spinner, Tag } from "@/components/common/bits";
 import { PluginActions } from "@/components/common/PluginActions";
@@ -75,13 +75,17 @@ function CodexSkills({ state, busy, run }: { state: State; busy: string | null; 
   );
 }
 
-export function HomeView({ state, filter, kind, busy, run, confirm, onOpen, onAdd, onInstall }: {
-  state: State; filter: Filter; kind: KindFilter; busy: string | null; run: Run; confirm: ConfirmFn; onOpen: (key: string) => void; onAdd: () => void; onInstall: (key: string) => void;
+export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpen, onAdd, onInstall }: {
+  state: State; filter: Filter; kind: KindFilter; query: string; busy: string | null; run: Run; confirm: ConfirmFn; onOpen: (key: string) => void; onAdd: () => void; onInstall: (key: string) => void;
 }) {
+  // 搜索：每个词都要出现在名字、介绍、仓库地址或两边的插件名里
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const text = (p: Plugin) => [p.name, p.key, p.description, p.repo, ...p.apps.map((a) => a.id)].join("\n").toLowerCase();
   const list = state.plugins.filter((p) => (kind === "all" || (p.kind ?? "plugin") === kind)
-    && (filter === "all" || p.apps.some((a) => a.app === filter && a.installed)));
+    && (filter === "all" || p.apps.some((a) => a.app === filter && a.installed))
+    && words.every((w) => text(p).includes(w)));
   const pending = state.plugins.filter((p) => p.managed?.needs_update).length;
-  const what = kind === "skill" ? "技能" : "插件";
+  const what = kind === "skill" ? "技能" : kind === "plugin" ? "插件" : "插件或技能";
 
   return (
     <div className="flex flex-col gap-3">
@@ -95,7 +99,13 @@ export function HomeView({ state, filter, kind, busy, run, confirm, onOpen, onAd
         </div>
       )}
 
-      {list.length === 0 ? (
+      {list.length === 0 && words.length > 0 ? (
+        <div className="rounded-xl border-[1.5px] border-dashed p-10 text-center">
+          <div className="mx-auto mb-2.5 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground"><Search className="h-6 w-6" /></div>
+          <div className="text-base font-semibold">没有匹配「{query.trim()}」的{what}</div>
+          <div className="mt-1 text-sm text-muted-foreground">按名字、介绍、仓库地址和两边的插件名搜，多个词用空格隔开</div>
+        </div>
+      ) : list.length === 0 ? (
         <div className="rounded-xl border-[1.5px] border-dashed p-10 text-center">
           <div className="mx-auto mb-2.5 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
             {kind === "skill" ? <ScrollText className="h-6 w-6" /> : <Puzzle className="h-6 w-6" />}

@@ -19,7 +19,7 @@ fn usage() -> String {
   status                      在终端打印状态
   check                       检查有没有新版本（锁定的跳过），再做一遍真实检查
   update [插件] [--force]     拉取最新并同步到 Claude Code 和 Codex
-  add <仓库> [--branch B] [--no-apply]  接管一个插件仓库
+  add <仓库或命令> [--branch B] [--no-apply]  接管一个插件仓库，或者装仓库里的技能（认 npx skills add … 命令）
   guard                       马上检查两边的插件配置有没有被改掉，改掉了就修复
   auto [--delay 秒]           后台任务入口：检查并修复配置，到点了就更新；--delay 先等一会再开始
   daemon                      开机自启的后台进程
@@ -210,12 +210,27 @@ pub fn run_cli(args: &[String], files: Files) -> i32 {
         "status" => cmd_status(),
         "check" => hub_lock(120).and_then(|_l| ops::op_check()).map(|n| print_notes(&n, "没有新版本")),
         "update" => hub_lock(120).and_then(|_l| ops::op_update(pos.first().map(String::as_str), flag(&rest, "--force"))).map(|n| print_notes(&n, "都已是最新")),
-        "add" => match pos.first() {
-            Some(repo) => hub_lock(120)
-                .and_then(|_l| ops::add_plugin(repo, &value_of(&rest, "--branch").unwrap_or_default(), !flag(&rest, "--no-apply"), &["claude".into(), "codex".into()]))
-                .map(|n| print_notes(&n, "")),
-            None => Err(HubError::Msg("要写仓库地址。".into())),
-        },
+        "add" => {
+            // 地址可以是一整条命令（npx skills add o/r --skill x），带不带引号都行：除了自己的两个参数，其余原样拼回去
+            let mut words: Vec<&str> = Vec::new();
+            let mut it = rest.iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--branch" => {
+                        it.next();
+                    }
+                    "--no-apply" => {}
+                    other => words.push(other),
+                }
+            }
+            if words.is_empty() {
+                Err(HubError::Msg("要写仓库地址，或者 npx skills add … 这样的命令。".into()))
+            } else {
+                hub_lock(120)
+                    .and_then(|_l| ops::add_plugin(&words.join(" "), &value_of(&rest, "--branch").unwrap_or_default(), !flag(&rest, "--no-apply"), &["claude".into(), "codex".into()]))
+                    .map(|n| print_notes(&n, ""))
+            }
+        }
         "guard" => hub_lock(120).and_then(|_l| ops::op_guard()).map(|n| print_notes(&n, "两边的插件配置都没问题")),
         "auto" => {
             cmd_auto(value_of(&rest, "--delay").and_then(|v| v.parse().ok()).unwrap_or(0));

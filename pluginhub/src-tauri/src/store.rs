@@ -1,5 +1,6 @@
 //! 配置（config.json）和运行状态（state.json）
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
@@ -17,6 +18,9 @@ pub struct PluginCfg {
     /// 锁定：不检查、不拉取更新
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
+    /// 插件在仓库里的子目录；没写就是仓库根目录
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -24,6 +28,14 @@ pub struct PluginCfg {
 impl PluginCfg {
     pub fn target(&self, app: &str) -> bool {
         self.targets.as_ref().and_then(|t| t.get(app)).copied().unwrap_or(true)
+    }
+
+    /// 插件文件夹：克隆的根目录，或者里面的子目录
+    pub fn root(&self, clone: &Path) -> PathBuf {
+        match self.path.as_deref() {
+            Some(p) if !p.is_empty() && p != "." => clone.join(p),
+            _ => clone.to_path_buf(),
+        }
     }
 
     pub fn set_target(&mut self, app: &str, on: bool) {
@@ -78,6 +90,11 @@ pub struct SkillCfg {
     pub dir: String,
     #[serde(default)]
     pub targets: BTreeMap<String, bool>,
+    /// 从受管仓库里拿的技能：仓库在 plugins 里的 id，和技能在仓库里的文件夹。没有这两项就是本机收编的
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -97,6 +114,13 @@ pub struct Config {
     pub proxy: Option<BTreeMap<String, String>>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+impl Config {
+    /// 从这个仓库里拿的技能
+    pub fn repo_skills(&self, id: &str) -> Vec<&SkillCfg> {
+        self.skills.iter().filter(|s| s.repo.as_deref() == Some(id)).collect()
+    }
 }
 
 pub fn load_config() -> Config {

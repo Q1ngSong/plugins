@@ -31,7 +31,8 @@ function AppCard({ p, a, busy, run, confirm }: { p: Plugin; a: AppEntry; busy: s
   const others = p.apps.some((x) => x !== a && x.installed && x.state !== undefined);
   const del = async () => {
     const last = !ours || others ? ""
-      : skill ? "\n这是最后一个装了它的 app，删掉后插件中心不再管它，~/.yuwanplugins/skills 里统一存放的那份挪进备份。"
+      : skill && p.skill?.repo ? "\n这是最后一个装了它的 app，删掉后插件中心不再管它。这个仓库的技能都不用了，克隆才挪进备份。"
+        : skill ? "\n这是最后一个装了它的 app，删掉后插件中心不再管它，~/.yuwanplugins/skills 里统一存放的那份挪进备份。"
         : "\n这是最后一个装了它的 app，删掉后插件中心不再管理它，~/.yuwanplugins 里的插件文件夹挪进备份。";
     const keep = skill && !a.linked ? "\n这里是一个真实的文件夹，会挪进 ~/.pluginhub/backups，不会直接删掉。" : "";
     const body = `从 ${APP_NAME[a.app]} 删除${skill ? "技能" : ""}「${p.name}」？只影响这一个 app。${last}${keep}`;
@@ -212,7 +213,10 @@ export function PluginView({ p, busy, run, confirm, onAdopt, onInstall }: {
         {p.description && <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{p.description}</p>}
         {isSkill(p) && (
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            {p.skill?.ours ? <>统一存放在 <code className="break-all font-mono">{p.skill.folder}</code>，装了它的 app 都链接到这里。改这一份，两边都生效。</>
+            {p.skill?.ours && p.skill.repo && p.managed
+              ? <>来自仓库 <button className="font-medium text-blue-500 hover:underline" onClick={() => api.open(p.managed!.web)}>{p.managed.slug}</button>（{p.managed.branch} 分支，{p.skill.path || "仓库根目录"}）。
+                克隆在 <code className="break-all font-mono">~/.yuwanplugins/{p.managed.id}</code>，统一存放处 <code className="break-all font-mono">{p.skill.folder}</code> 是指向它的链接，装了它的 app 再链接过去。同步就是拉取仓库，别在克隆里改。</>
+              : p.skill?.ours ? <>统一存放在 <code className="break-all font-mono">{p.skill.folder}</code>，装了它的 app 都链接到这里。改这一份，两边都生效。</>
               : p.official ? "Codex 自带的技能，由 Codex 自己管。"
                 : "独立的技能，还不归插件中心管。点右上角的安装，把它装到另一个 app：它会先挪进 ~/.yuwanplugins/skills 统一存放，两边都链接过去。"}
           </p>

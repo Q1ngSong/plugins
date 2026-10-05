@@ -9,10 +9,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
+use regex::Regex;
 use serde_json::{json, Value};
 
 use crate::bail;
-use crate::gitx::backup;
+use crate::gitx::{backup, git_soft, read_manifests_at, repo_dir};
 use crate::store::*;
 use crate::usage::{merge_projects, project_rows, Usage};
 use crate::platform;
@@ -20,6 +21,9 @@ use crate::util::*;
 
 /// 插件中心管理的 skill 放在这里，每个一个文件夹
 pub static SKILLS_DIR: LazyLock<PathBuf> = LazyLock::new(|| PLUGINS_DIR.join("skills"));
+
+/// npx skills add -g 把技能装在这里，Codex 也读它。插件中心不管这个文件夹，只在添加时看里面有没有同名的技能
+pub static AGENTS_SKILLS: LazyLock<PathBuf> = LazyLock::new(|| HOME.join(".agents").join("skills"));
 
 /// 这个 app 读独立 skill 的文件夹
 pub fn app_dir(app: &str) -> PathBuf {
@@ -66,7 +70,8 @@ fn closing(s: &str, q: char) -> Option<usize> {
 }
 
 /// 一个键后面的值，可能跨好几行。返回 (值, 额外用掉的行数)。
-fn yaml_value(first: &str, rest: &[&str], indent: usize) -> (String, usize) {
+/// text 表示这个键放的一定是文字（name、description），不会是嵌套的键。
+fn yaml_value(first: &str, rest: &[&str], indent: usize, text: bool) -> (String, usize) {
     if let Some(q) = first.chars().next().filter(|c| *c == '\'' || *c == '"') {
         let mut s = first[1..].to_string();
         let mut used = 0;
@@ -89,19 +94,22 @@ fn yaml_value(first: &str, rest: &[&str], indent: usize) -> (String, usize) {
         let sep = if first.starts_with('|') { "\n" } else { " " };
         return (lines.join(sep).trim().to_string(), used);
     }
-    if first.is_empty() {
+    if first.is_empty() && !text {
         return (String::new(), 0); // 下面是嵌套的键（比如 metadata:），留给外层逐行读
     }
-    // 普通写法：缩进更深、又不像「键: 值」的行是续行
+    // 普通写法：缩进更深的行是续行，文字也可以从下一行才开始（description: 后面换行、缩进着写）。
+    // 不确定放的是不是文字时，像「键: 值」的行不算续行，免得把嵌套的键吞进来
     let cont: Vec<&str> = rest
         .iter()
-        .take_while(|l| !l.trim().is_empty() && indent_of(l) > indent && !l.trim_start().contains(": "))
+        .take_while(|l| !l.trim().is_empty() && indent_of(l) > indent && (text || !l.trim_start().contains(": ")))
         .map(|l| l.trim())
         .collect();
     let used = cont.len();
     let mut v = first.to_string();
     for c in cont {
-        v.push(' ');
+        if !v.is_empty() {
+            v.push(' ');
+        }
         v.push_str(c);
     }
     (v, used)
@@ -109,7 +117,12 @@ fn yaml_value(first: &str, rest: &[&str], indent: usize) -> (String, usize) {
 
 /// 读 SKILL.md 开头的 name、description 和版本号（顶层的 version，或者 metadata 下的 version）
 pub fn read_front(md: &Path) -> Option<Front> {
-    let text = String::from_utf8_lossy(&fs::read(md).ok()?).replace("\r\n", "\n");
+    parse_front(&String::from_utf8_lossy(&fs::read(md).ok()?))
+}
+
+/// 从 SKILL.md 的内容里读开头
+pub fn parse_front(raw: &str) -> Option<Front> {
+    let text = raw.replace("\r\n", "\n");
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text).to_string();
     let body = text.strip_prefix("---\n")?;
     let end = body.find("\n---")?;
@@ -123,7 +136,8 @@ pub fn read_front(md: &Path) -> Option<Front> {
             i += 1;
             continue;
         };
-        let (value, used) = yaml_value(value.trim(), &lines[i + 1..], indent);
+        let text = indent == 0 && matches!(key.trim(), "name" | "description");
+        let (value, used) = yaml_value(value.trim(), &lines[i + 1..], indent, text);
         match (indent, key.trim()) {
             (0, "name") => f.name = value,
             (0, "description") => f.description = value,
@@ -191,24 +205,97 @@ pub fn scan() -> Vec<Found> {
     out
 }
 
+/// 本机已经有的技能：名字（小写）→ 在哪。claude、codex 是两边的 skills 文件夹（Codex 自带的也算 codex），
+/// agents 是 ~/.agents/skills
+pub fn local_index() -> BTreeMap<String, Vec<&'static str>> {
+    let mut found = scan();
+    scan_dir("agents", &AGENTS_SKILLS, false, &mut found);
+    let mut out: BTreeMap<String, Vec<&'static str>> = BTreeMap::new();
+    for f in &found {
+        let places = out.entry(f.front.name.to_lowercase()).or_default();
+        if !places.contains(&f.app) {
+            places.push(f.app);
+        }
+    }
+    out
+}
+
+/// 这个 app 已经看得到的同名技能放在哪（skip 是正要放链接的位置，它自己不算）。
+/// Codex 除了自己的 skills 文件夹，还读自带的那些和 ~/.agents/skills
+pub fn seen_by(app: &str, name: &str, skip: Option<&Path>) -> Option<PathBuf> {
+    let mut found = Vec::new();
+    if app == "claude" {
+        scan_dir("claude", &app_dir("claude"), false, &mut found);
+    } else {
+        scan_dir("codex", &app_dir("codex"), false, &mut found);
+        scan_dir("codex", &app_dir("codex").join(".system"), true, &mut found);
+        scan_dir("codex", &AGENTS_SKILLS, false, &mut found);
+    }
+    found.into_iter().find(|f| f.front.name.eq_ignore_ascii_case(name) && !same_path(Some(&f.path), skip)).map(|f| f.path)
+}
+
+/// 文件列表里的一条是不是 SKILL.md；是就返回技能文件夹（在仓库根目录的是空串）
+pub fn skill_dir_of(file: &str) -> Option<String> {
+    if file == "SKILL.md" {
+        return Some(String::new());
+    }
+    let dir = file.strip_suffix("/SKILL.md")?;
+    if dir.split('/').any(|seg| seg == "node_modules" || seg == ".git") {
+        return None;
+    }
+    Some(dir.to_string())
+}
+
+/// 克隆里的技能：(名字, 在仓库里的文件夹)。under 不为空时只看那个子目录里的
+pub fn find_in_clone(clone: &Path, under: Option<&str>) -> Vec<(String, String)> {
+    let under = under.map(|u| u.trim_matches('/')).filter(|u| !u.is_empty());
+    let mut out = Vec::new();
+    for file in git_soft(&["ls-files"], Some(clone)).lines() {
+        let Some(dir) = skill_dir_of(file) else { continue };
+        if under.is_some_and(|u| dir != u && !dir.starts_with(&format!("{u}/"))) {
+            continue;
+        }
+        let src = if dir.is_empty() { clone.to_path_buf() } else { clone.join(&dir) };
+        let Some(front) = read_front(&src.join("SKILL.md")) else { continue };
+        let folder = dir.rsplit('/').next().unwrap_or("");
+        let name = if !front.name.is_empty() {
+            front.name
+        } else if folder.is_empty() {
+            file_name(clone)
+        } else {
+            folder.to_string()
+        };
+        out.push((name, dir));
+    }
+    out
+}
+
 fn backup_name(dir: &str) -> String {
     format!("skill-{dir}")
 }
 
 // ---------------------------------------------------------------- 页面上的一行
 
-/// 用过这个 skill 的项目：Claude Code 按 skill 名记，Codex 按文件夹名记，两个名字不一样时都算上
-fn skill_projects(usage: &Usage, app: &str, name: &str, dir: &str) -> Vec<Value> {
+/// 用过这个 skill 的项目：Claude Code 按 skill 名记，Codex 按文件夹名记，两个名字不一样时都算上。
+/// 从仓库装的，Codex 读的是克隆里的路径，按「仓库:路径」记（from 就是这个键）
+fn skill_projects(usage: &Usage, app: &str, name: &str, dir: &str, from: Option<&str>) -> Vec<Value> {
     let a = format!("skill:{name}");
     let b = format!("skill:{dir}");
-    let groups = if a == b { vec![usage.get(app, &a)] } else { vec![usage.get(app, &a), usage.get(app, &b)] };
+    let mut groups = if a == b { vec![usage.get(app, &a)] } else { vec![usage.get(app, &a), usage.get(app, &b)] };
+    if let Some(key) = from {
+        groups.push(usage.get(app, key));
+    }
     project_rows(&merge_projects(&groups))
 }
 
 /// 本机所有独立的 skill，同名的合成一行。行的格式和插件一样，页面上的卡片、详情页、按钮都能共用。
-pub fn skill_rows(usage: &Usage) -> Vec<Value> {
+pub fn skill_rows(usage: &Usage, views: &[Value]) -> Vec<Value> {
     let cfg = load_config();
     let found = scan();
+    // ~/.agents/skills 里的技能名：Codex 也读那里，同名的不能再往 Codex 装
+    let mut seen = Vec::new();
+    scan_dir("agents", &AGENTS_SKILLS, false, &mut seen);
+    let agents: std::collections::BTreeSet<String> = seen.iter().map(|f| f.front.name.to_lowercase()).collect();
     let mut groups: BTreeMap<String, Vec<&Found>> = BTreeMap::new();
     for f in &found {
         groups.entry(f.front.name.clone()).or_default().push(f);
@@ -220,13 +307,16 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
     let mut rows = Vec::new();
     for (name, list) in groups {
         let managed = cfg.skills.iter().find(|s| s.name == name);
-        let ours = managed.map(|s| SKILLS_DIR.join(&s.dir)).filter(|d| d.join("SKILL.md").is_file());
+        // 从仓库装的技能，仓库里的文件夹没了也要留在列表里，好看到问题
+        let ours = managed.map(|s| SKILLS_DIR.join(&s.dir)).filter(|d| d.join("SKILL.md").is_file() || managed.is_some_and(|s| s.repo.is_some()));
+        let view = managed.and_then(|s| s.repo.as_deref()).and_then(|rid| views.iter().find(|v| gs(v, "id") == rid));
         let dir = managed.map(|s| s.dir.clone()).or_else(|| list.first().map(|f| f.dir.clone())).unwrap_or_else(|| name.clone());
         let front = ours
             .as_ref()
             .and_then(|d| read_front(&d.join("SKILL.md")))
             .or_else(|| list.first().map(|f| f.front.clone()))
             .unwrap_or_default();
+        let from = managed.and_then(|s| Some(crate::usage::repo_skill_key(s.repo.as_deref()?, s.path.as_deref().unwrap_or(""))));
         let mut apps = Vec::new();
         for app in APPS {
             let here = list.iter().find(|f| f.app == app);
@@ -241,7 +331,7 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
                 "enabled": here.is_some(), "description": front.description, "path": display(&path),
                 "target": here.map(|f| display(&f.target)), "linked": here.map(|f| f.linked).unwrap_or(false),
                 "official": here.map(|f| f.official).unwrap_or(false), "port": null,
-                "projects": skill_projects(usage, app, &name, here.map(|f| f.dir.as_str()).unwrap_or(&dir)),
+                "projects": skill_projects(usage, app, &name, here.map(|f| f.dir.as_str()).unwrap_or(&dir), from.as_deref()),
             });
             a["source"] = Value::from(match here {
                 Some(f) if f.official => "Codex 自带".to_string(),
@@ -258,8 +348,14 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
                     Some(f) if f.linked => ("unlinked", format!("{} 指向了别处", display(&f.path))),
                     Some(f) => ("unlinked", format!("{} 是个真实的文件夹，不是链接", display(&f.path))),
                 };
+                let mut problems: Vec<String> = if problem.is_empty() { Vec::new() } else { vec![problem] };
+                let mut state = state;
+                if !o.join("SKILL.md").is_file() {
+                    problems.push(format!("{} 里读不到 SKILL.md（仓库里的技能文件夹改名或删掉了？）", display(o)));
+                    state = "unlinked";
+                }
                 a["state"] = Value::from(state);
-                a["problems"] = json!(if problem.is_empty() { Vec::new() } else { vec![problem] });
+                a["problems"] = json!(problems);
                 a["folder"] = Value::from(display(o));
             }
             apps.push(a);
@@ -268,11 +364,15 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
         let supports: Vec<&str> = if official { vec!["codex"] } else { APPS.to_vec() };
         let mut row = json!({
             "key": format!("skill:{name}"), "kind": "skill", "name": name, "version": front.version,
-            "description": front.description, "managed": null, "repo": "", "link": "",
-            "skill": {"ours": ours.is_some(), "folder": ours.as_deref().map(display), "dir": dir},
+            "description": front.description,
+            "managed": view.cloned().unwrap_or(Value::Null),
+            "repo": view.map(|v| gs(v, "repo").to_string()).unwrap_or_default(),
+            "link": view.map(|v| gs(v, "web").to_string()).unwrap_or_default(),
+            "skill": {"ours": ours.is_some(), "folder": ours.as_deref().map(display), "dir": dir,
+                      "repo": managed.and_then(|s| s.repo.clone()), "path": managed.and_then(|s| s.path.clone())},
             "apps": apps, "supports": supports, "official": official,
         });
-        let install = install_options(&row, ours.as_deref(), &dir);
+        let install = install_options(&row, ours.as_deref(), &dir, agents.contains(&name.to_lowercase()));
         let installable: Vec<String> = install.iter().filter(|(_, o)| o.get("how").map(|h| !h.is_null()).unwrap_or(false)).map(|(k, _)| k.clone()).collect();
         row["install"] = Value::Object(install);
         row["installable"] = json!(installable);
@@ -284,7 +384,7 @@ pub fn skill_rows(usage: &Usage) -> Vec<Value> {
 }
 
 /// 每个还没装的 app 能怎么装：link 直接链接到统一存放的那份；move 先把现有的那份挪进统一存放的地方
-fn install_options(row: &Value, ours: Option<&Path>, dir: &str) -> serde_json::Map<String, Value> {
+fn install_options(row: &Value, ours: Option<&Path>, dir: &str, in_agents: bool) -> serde_json::Map<String, Value> {
     let apps = ga(row, "apps");
     let mut out = serde_json::Map::new();
     for x in APPS {
@@ -294,6 +394,8 @@ fn install_options(row: &Value, ours: Option<&Path>, dir: &str) -> serde_json::M
         let spot = app_dir(x).join(dir);
         let v = if gb(row, "official") {
             json!({"how": null, "why": "Codex 自带的 skill，只在 Codex 里用"})
+        } else if x == "codex" && in_agents {
+            json!({"how": null, "why": "Codex 已经从 ~/.agents/skills 读到同名的技能（npx skills 装的那份），再装会重复"})
         } else if fs::symlink_metadata(&spot).is_ok() {
             json!({"how": null, "why": format!("{} 已经被别的东西占了", display(&spot))})
         } else if ours.is_some() {
@@ -377,7 +479,7 @@ pub fn install(row: &Value, apps: &[String]) -> R<Vec<String>> {
     let i = match cfg.skills.iter().position(|s| s.name == name) {
         Some(i) => i,
         None => {
-            cfg.skills.push(SkillCfg { name: name.clone(), dir: dir.clone(), targets: BTreeMap::new() });
+            cfg.skills.push(SkillCfg { name: name.clone(), dir: dir.clone(), targets: BTreeMap::new(), repo: None, path: None });
             cfg.skills.len() - 1
         }
     };
@@ -419,7 +521,8 @@ pub fn uninstall_app(row: &Value, app: &str) -> R<Vec<String>> {
     if let Some(i) = cfg.skills.iter().position(|s| s.name == name) {
         cfg.skills[i].targets.insert(app.to_string(), false);
         if !cfg.skills[i].targets.values().any(|v| *v) {
-            notes.extend(retire(cfg.skills.remove(i))?);
+            let s = cfg.skills.remove(i);
+            notes.extend(retire(&mut cfg, s)?);
         }
         save_config(&cfg)?;
     }
@@ -436,20 +539,174 @@ pub fn uninstall_all(row: &Value) -> R<Vec<String>> {
     let mut cfg = load_config();
     if let Some(i) = cfg.skills.iter().position(|s| s.name == name) {
         let s = cfg.skills.remove(i);
+        let ns = retire(&mut cfg, s)?;
         save_config(&cfg)?;
-        notes.extend(tagged(&name, retire(s)?));
+        notes.extend(tagged(&name, ns));
     }
     Ok(notes)
 }
 
-/// 不再管理：统一存放的那份挪进备份，不直接删
-fn retire(s: SkillCfg) -> R<Vec<String>> {
+/// 不再管理。本机收编的：统一存放的那份挪进备份，不直接删。从仓库拿的：只去掉链接；
+/// 仓库里别的技能也都不用了、又没装成插件，就连仓库一起不再管理，克隆挪进备份。
+fn retire(cfg: &mut Config, s: SkillCfg) -> R<Vec<String>> {
     let folder = SKILLS_DIR.join(&s.dir);
-    if !folder.exists() {
-        return Ok(Vec::new());
+    let mut notes = Vec::new();
+    if platform::is_link(&folder) {
+        platform::remove_link(&folder)?;
+        notes.push(format!("两边都不用了，去掉了链接 {}", display(&folder)));
+    } else if folder.exists() {
+        let kept = backup(&folder, &backup_name(&s.dir))?;
+        notes.push(format!("两边都不用了，插件中心不再管它，{} 挪进了备份 {}", display(&folder), display(&kept)));
     }
-    let kept = backup(&folder, &backup_name(&s.dir))?;
-    Ok(vec![format!("两边都不用了，插件中心不再管它，{} 挪进了备份 {}", display(&folder), display(&kept))])
+    if let Some(rid) = &s.repo {
+        if cfg.repo_skills(rid).is_empty() {
+            if let Some(i) = cfg.plugins.iter().position(|p| &p.id == rid) {
+                let p = &cfg.plugins[i];
+                let as_plugin = APPS.iter().any(|a| p.target(a)) && {
+                    let d = repo_dir(p);
+                    let m = read_manifests_at(&d, None, p.path.as_deref().unwrap_or(""));
+                    !m.claude_plugins.is_empty() || m.codex_name.is_some()
+                };
+                if !as_plugin {
+                    let p = cfg.plugins.remove(i);
+                    notes.push(format!("仓库 {} 里的技能都不用了，插件中心不再管它，克隆挪到 {}", p.id, crate::ops::retire(&p)?));
+                }
+            }
+        }
+    }
+    Ok(notes)
+}
+
+// ---------------------------------------------------------------- 从受管仓库里拿技能
+
+/// 技能文件夹名：仓库里路径的最后一段；技能在仓库根目录的用仓库 id
+fn dir_name(repo_id: &str, path: &str) -> String {
+    let last = path.trim_matches('/').rsplit('/').next().unwrap_or("").to_string();
+    let base = if last.is_empty() { repo_id.to_string() } else { last };
+    Regex::new(r"[^\w.-]").unwrap().replace_all(&base, "-").to_string()
+}
+
+/// 把仓库里的几个技能装成统一存放的技能：~/.yuwanplugins/skills/<名字> 是指向克隆里那个文件夹的链接，
+/// 选中的 app 再链接到它。先把冲突都查完再动手。返回 (技能名, 做了什么)。
+pub fn add_from_repo(cfg: &mut Config, repo_id: &str, clone: &Path, picks: &[String], apps: &[String]) -> R<(Vec<String>, Vec<String>)> {
+    struct Plan {
+        name: String,
+        dir: String,
+        path: String,
+        src: PathBuf,
+        ours: PathBuf,
+    }
+    let mut plans: Vec<Plan> = Vec::new();
+    for pick in picks {
+        let path = pick.trim().trim_start_matches("./").trim_matches('/').to_string();
+        if path.split('/').any(|seg| seg == "..") {
+            bail!("技能路径不合法：{pick}");
+        }
+        let src = if path.is_empty() { clone.to_path_buf() } else { clone.join(&path) };
+        let Some(front) = read_front(&src.join("SKILL.md")) else {
+            bail!("仓库里没有 {}/SKILL.md，或者它开头没有 --- 包起来的说明。", if path.is_empty() { "." } else { path.as_str() });
+        };
+        let dir = dir_name(repo_id, &path);
+        let name = if front.name.is_empty() { dir.clone() } else { front.name.clone() };
+        let ours = SKILLS_DIR.join(&dir);
+        // 同名技能已经归插件中心管：得是同一个仓库里的同一个文件夹，才算是再装一遍
+        if let Some(s) = cfg.skills.iter().find(|s| s.name == name || s.dir == dir) {
+            let same = s.repo.as_deref() == Some(repo_id) && s.path.as_deref() == Some(path.as_str());
+            if !same {
+                let from = s.repo.as_deref().map(|r| format!("来自仓库 {r}")).unwrap_or_else(|| "本机收编的".into());
+                let what = if s.name == name { format!("叫 {name} 的技能") } else { format!("文件夹名也是 {dir} 的技能（{}）", s.name) };
+                bail!("已经有一个{what}归插件中心管（{from}），先删掉它再装这个。");
+            }
+        } else if fs::symlink_metadata(&ours).is_ok() && !links_to(&ours, &src) {
+            bail!("{} 已经存在，没有动它。", display(&ours));
+        }
+        for app in apps {
+            let spot = app_dir(app).join(&dir);
+            if fs::symlink_metadata(&spot).is_ok() && !links_to(&spot, &ours) {
+                let what = if platform::is_link(&spot) { "指向别处的链接" } else { "真实的文件夹" };
+                bail!("{} 里已经有 {}（{what}），先在插件中心里把它删掉或者改名。", app_name(app), display(&spot));
+            }
+            // 同名技能在别的位置：再装一份，这个 app 的技能清单里会出现两个
+            if let Some(other) = seen_by(app, &name, Some(&spot)) {
+                if under(&other, &AGENTS_SKILLS) {
+                    bail!(
+                        "Codex 已经从 ~/.agents/skills 读到一个叫 {name} 的技能（npx skills 装的那份），再装一份会重复。只装到 Claude Code，或者先运行 npx skills remove {name} -g 把那份删掉。"
+                    );
+                }
+                if under(&other, &app_dir("codex").join(".system")) {
+                    bail!("Codex 自带一个叫 {name} 的技能，再装一份会重复。只装到 Claude Code。");
+                }
+                bail!("{} 里已经有一个叫 {name} 的技能（{}），先在插件中心里把它删掉。", app_name(app), display(&other));
+            }
+        }
+        if plans.iter().any(|p| p.dir == dir) {
+            bail!("选中的技能里有两个都叫 {dir}。");
+        }
+        plans.push(Plan { name, dir, path, src, ours });
+    }
+    fs::create_dir_all(&*SKILLS_DIR)?;
+    let (mut names, mut notes) = (Vec::new(), Vec::new());
+    for plan in plans {
+        if make_link(&plan.ours, &plan.src)? {
+            notes.push(format!("[{}] {} → {}", plan.name, display(&plan.ours), display(&plan.src)));
+        }
+        let i = match cfg.skills.iter().position(|s| s.name == plan.name) {
+            Some(i) => i,
+            None => {
+                cfg.skills.push(SkillCfg {
+                    name: plan.name.clone(),
+                    dir: plan.dir.clone(),
+                    targets: BTreeMap::new(),
+                    repo: Some(repo_id.to_string()),
+                    path: Some(plan.path.clone()),
+                });
+                cfg.skills.len() - 1
+            }
+        };
+        for app in apps {
+            let link = app_dir(app).join(&plan.dir);
+            if make_link(&link, &plan.ours)? {
+                notes.push(format!("[{}] {}：链接 {} → {}", plan.name, app_name(app), display(&link), display(&plan.ours)));
+            }
+            cfg.skills[i].targets.insert(app.clone(), true);
+        }
+        names.push(plan.name);
+    }
+    Ok((names, notes))
+}
+
+/// 仓库拉取之后：从它拿的每个技能，统一存放处的链接和两边的链接都对上。文件夹在仓库里没了就说一声。
+pub fn relink_repo(cfg: &Config, repo_id: &str, clone: &Path) -> Vec<String> {
+    let mut notes = Vec::new();
+    for s in cfg.repo_skills(repo_id) {
+        let path = s.path.clone().unwrap_or_default();
+        let src = if path.is_empty() { clone.to_path_buf() } else { clone.join(&path) };
+        let ours = SKILLS_DIR.join(&s.dir);
+        if !src.join("SKILL.md").is_file() {
+            notes.push(format!("技能 {} 在仓库里找不到了（{path}/SKILL.md 没有了，上游改名或删掉了？），链接先留着", s.name));
+            continue;
+        }
+        match make_link(&ours, &src) {
+            Ok(true) => notes.push(format!("技能 {}：{} → {}", s.name, display(&ours), display(&src))),
+            Ok(false) => {}
+            Err(e) => {
+                notes.push(format!("技能 {}：{e}", s.name));
+                continue;
+            }
+        }
+        for (app, on) in &s.targets {
+            if !*on {
+                continue;
+            }
+            let link = app_dir(app).join(&s.dir);
+            match make_link(&link, &ours) {
+                Ok(true) => notes.push(format!("技能 {}：{}：重新链接 {} → {}", s.name, app_name(app), display(&link), display(&ours))),
+                Ok(false) => {}
+                Err(e) => notes.push(format!("技能 {}：{}：{e}", s.name, app_name(app))),
+            }
+        }
+    }
+    notes
 }
 
 /// 同步：插件中心管的，把该有的链接都补上
@@ -478,6 +735,20 @@ pub fn guard() -> Vec<(String, String, Vec<String>, bool)> {
     let mut out = Vec::new();
     for s in &cfg.skills {
         let ours = SKILLS_DIR.join(&s.dir);
+        // 从仓库拿的：统一存放处是指向克隆的链接，丢了或者指错了先补上
+        if let Some(rid) = &s.repo {
+            let clone = PLUGINS_DIR.join(rid);
+            let src = match s.path.as_deref() {
+                Some(p) if !p.is_empty() => clone.join(p),
+                _ => clone,
+            };
+            if src.join("SKILL.md").is_file() && !links_to(&ours, &src) {
+                match make_link(&ours, &src) {
+                    Ok(_) => log(&format!("[{}] 统一存放处的链接不对，已重新指向 {}", s.name, display(&src))),
+                    Err(e) => log(&format!("[{}] 统一存放处的链接修不了：{e}", s.name)),
+                }
+            }
+        }
         if !ours.join("SKILL.md").is_file() {
             continue;
         }
@@ -562,12 +833,25 @@ mod tests {
         assert_eq!(f.version, "3");
         let g = front("---\r\nname: b\r\ndescription: plain start\r\n  continues here\r\n---\r\n");
         assert_eq!(g.description, "plain start continues here");
+        // 说明从下一行才开始，里面还有冒号；后面的 metadata 照样读得到
+        let h = front("---\nname: c\ndescription:\n  Starts on the next line. Triggers: a,\n  b and c.\nlicense: MIT\nmetadata:\n  author: x\n  version: '2.0'\n---\n");
+        assert_eq!(h.description, "Starts on the next line. Triggers: a, b and c.");
+        assert_eq!(h.version, "2.0");
     }
 
     #[test]
     fn tokens_count_chinese_heavier() {
         assert_eq!(tokens("a", "bcdefgh"), 10); // "a: bcdefgh" 十个字符 → 2，加 8
         assert_eq!(tokens("a", "中文"), 3 + 8); // 两个汉字算 3，"a: " 不到 4 个字符算 0
+    }
+
+    #[test]
+    fn skill_folders_are_found_in_file_lists() {
+        assert_eq!(skill_dir_of("SKILL.md").as_deref(), Some(""));
+        assert_eq!(skill_dir_of("skills/pdf/SKILL.md").as_deref(), Some("skills/pdf"));
+        assert_eq!(skill_dir_of("skills/pdf/reference.md"), None);
+        assert_eq!(skill_dir_of("node_modules/x/SKILL.md"), None);
+        assert_eq!(skill_dir_of("docs/MY-SKILL.md"), None);
     }
 
     #[test]

@@ -26,7 +26,7 @@ pub fn plugin_view(p: &PluginCfg, st: &mut State, claude: &ClaudeCode, codex: &C
         "branch": p.branch, "checked_at": m.get("checked_at").cloned().unwrap_or(Value::Null),
         "updated_at": m.get("updated_at").cloned().unwrap_or(Value::Null),
         "error": m.get("error").cloned().unwrap_or(Value::Null), "cloned": false, "needs_update": true,
-        "claude": [], "codex": null, "locked": locked, "modified": [],
+        "claude": [], "codex": null, "locked": locked, "modified": [], "path": p.path.clone(),
     });
     let d = repo_dir(p);
     if !d.join(".git").exists() {
@@ -34,7 +34,8 @@ pub fn plugin_view(p: &PluginCfg, st: &mut State, claude: &ClaudeCode, codex: &C
     }
     let head = commit_info(&d, "HEAD");
     let remote = commit_info(&d, &format!("origin/{}", p.branch)).or_else(|| head.clone());
-    let man = read_manifests(&d, None);
+    let root = p.root(&d);
+    let man = read_manifests_at(&d, None, p.path.as_deref().unwrap_or(""));
     let head_sha = head.as_ref().map(|c| c.sha.clone());
     // 锁定的插件不看远端有没有新版本
     let latest = if locked { head_sha.clone() } else { remote.as_ref().map(|c| c.sha.clone()).or_else(|| head_sha.clone()) };
@@ -42,6 +43,7 @@ pub fn plugin_view(p: &PluginCfg, st: &mut State, claude: &ClaudeCode, codex: &C
     let synced = m.get("commit").and_then(Value::as_str).map(str::to_string);
     let obj = view.as_object_mut().expect("object");
     obj.insert("cloned".into(), Value::Bool(true));
+    obj.insert("folder".into(), Value::from(display(&root))); // 插件在子目录里的，就是那个子目录
     obj.insert("head".into(), serde_json::to_value(&head).unwrap_or(Value::Null));
     obj.insert("remote".into(), serde_json::to_value(&remote).unwrap_or(Value::Null));
     obj.insert("manifest".into(), serde_json::to_value(&man).unwrap_or(Value::Null));
@@ -50,13 +52,13 @@ pub fn plugin_view(p: &PluginCfg, st: &mut State, claude: &ClaudeCode, codex: &C
     obj.insert("modified".into(), json!(local_changes(&d, &p.branch, synced.as_deref())));
     let mut targets: Vec<Value> = Vec::new();
     if p.target("claude") {
-        let list: Vec<Value> = man.claude_plugins.iter().map(|c| claude.status(&c.name, &d.join(&c.path), head_sha.as_deref(), latest.as_deref())).collect();
+        let list: Vec<Value> = man.claude_plugins.iter().map(|c| claude.status(&c.name, &root.join(&c.path), head_sha.as_deref(), latest.as_deref())).collect();
         targets.extend(list.iter().cloned());
         obj.insert("claude".into(), Value::Array(list));
     }
     if p.target("codex") {
         if let Some(name) = &man.codex_name {
-            let s = codex.status(name, &d, head_sha.as_deref(), latest.as_deref());
+            let s = codex.status(name, &root, head_sha.as_deref(), latest.as_deref());
             targets.push(s.clone());
             obj.insert("codex".into(), s);
         }
@@ -194,9 +196,13 @@ fn skills_cost(dirs: &[PathBuf]) -> u64 {
         .sum()
 }
 
-/// 插件里每个 skill 的名字：SKILL.md 开头写的 name，没写就用文件夹名
+/// 插件里每个 skill 在这个 app 里叫什么。Claude Code 按文件夹名认（claude plugin details 列的就是文件夹名）；
+/// Codex 按 SKILL.md 开头写的 name，没写才用文件夹名
 pub fn skill_names(folder: &Path, app: &str) -> Vec<String> {
     let dirs = skill_dirs(folder, app);
+    if app == "claude" {
+        return dirs.iter().map(|d| file_name(d)).collect();
+    }
     let fm = Regex::new(r"(?ms)^---\s*$(.*?)^---\s*$").unwrap();
     let name_re = Regex::new(r#"(?m)^name:\s*["']?(.+?)["']?\s*$"#).unwrap();
     dirs.iter()
@@ -440,8 +446,10 @@ pub fn machine_plugins(managed: &[Value], claude: &ClaudeCode, codex: &Codex, us
         // 每次会话常驻多少：受管的看 ~/.yuwanplugins 里的插件文件夹（两边清单指到的技能合起来），别的看装着它的 app 里那份
         let dirs = match r.get("managed").filter(|m| m.is_object()) {
             Some(m) => {
-                let d = PLUGINS_DIR.join(gs(m, "id"));
-                let mut dirs: Vec<PathBuf> = read_manifests(&d, None).claude_plugins.iter().flat_map(|c| skill_dirs(&d.join(&c.path), "claude")).collect();
+                let clone = PLUGINS_DIR.join(gs(m, "id"));
+                let sub = gs(m, "path");
+                let d = if sub.is_empty() { clone.clone() } else { clone.join(sub) };
+                let mut dirs: Vec<PathBuf> = read_manifests_at(&clone, None, sub).claude_plugins.iter().flat_map(|c| skill_dirs(&d.join(&c.path), "claude")).collect();
                 dirs.extend(skill_dirs(&d, "codex"));
                 dirs
             }
@@ -460,9 +468,16 @@ pub fn build_state() -> R<Value> {
     let views: Vec<Value> = cfg.plugins.iter().map(|p| plugin_view(p, &mut st, &claude, &codex)).collect();
     save_state(&st)?;
     let usage = scan_usage();
+    // 只拿技能、不装成插件的仓库不单独列成插件卡片，它的信息挂在每个技能的行上
+    let plugin_views: Vec<Value> = views
+        .iter()
+        .zip(&cfg.plugins)
+        .filter(|(_, p)| APPS.iter().any(|a| p.target(a)) || cfg.repo_skills(&p.id).is_empty())
+        .map(|(v, _)| v.clone())
+        .collect();
     // 插件和独立的 skill 放在同一张表里，页面按 kind 筛选
-    let mut plugins = machine_plugins(&views, &claude, &codex, &usage);
-    plugins.extend(crate::skills::skill_rows(&usage));
+    let mut plugins = machine_plugins(&plugin_views, &claude, &codex, &usage);
+    plugins.extend(crate::skills::skill_rows(&usage, &views));
     let checks = st.get("verify").cloned().unwrap_or(Value::Null);
     let repairs = st.get("repairs").cloned().unwrap_or(Value::Null);
     for r in plugins.iter_mut() {

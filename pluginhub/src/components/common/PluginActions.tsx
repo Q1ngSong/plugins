@@ -15,7 +15,8 @@ export function PluginActions({ p, busy, run, confirm, withDelete = true, onInst
   const del = async () => {
     const apps = installedApps(p).filter((a) => !a.official).map((a) => APP_NAME[a.app]).join("、") || "所有 app";
     const extra = skill
-      ? p.skill?.ours ? "\n插件中心也不再管它，~/.yuwanplugins/skills 里统一存放的那份会挪进备份，不会直接删掉。" : "\n技能文件夹会挪进 ~/.pluginhub/backups，不会直接删掉。"
+      ? p.skill?.repo ? "\n只去掉链接，克隆里的文件不动。这个仓库的技能都不用了，克隆才挪进备份。"
+        : p.skill?.ours ? "\n插件中心也不再管它，~/.yuwanplugins/skills 里统一存放的那份会挪进备份，不会直接删掉。" : "\n技能文件夹会挪进 ~/.pluginhub/backups，不会直接删掉。"
       : p.managed ? "\n插件中心也不再管理它，~/.yuwanplugins 里的插件文件夹会挪进备份，不会直接删掉。" : "";
     const title = skill ? "删除技能" : "删除插件";
     if (!(await confirm({ title, body: `从 ${apps} 删除「${p.name}」？${extra}`, okText: "删除", danger: true }))) return;
@@ -38,7 +39,10 @@ export function PluginActions({ p, busy, run, confirm, withDelete = true, onInst
         // 锁定的插件不同步：按钮变灰点不了；外面套一层，灰掉时鼠标停上去也能看到原因
         <span title={p.managed?.locked ? "已锁定，不同步。先解锁" : undefined} className="inline-flex">
           <IconButton attn={pending && !p.managed?.locked} aria-label="同步" disabled={!!busy || !!p.managed?.locked}
-            title={skill ? (pending ? "有链接要修，点击重新链接" : "重新链接并检查") : pending ? "有新版本或配置要修，点击同步" : "同步"}
+            title={skill
+              ? p.skill?.repo ? (pending ? "仓库有新版本，或者有链接要修，点击同步" : "拉取仓库的最新版本，重新链接并检查")
+                : pending ? "有链接要修，点击重新链接" : "重新链接并检查"
+              : pending ? "有新版本或配置要修，点击同步" : "同步"}
             onClick={() => run(`sync:${p.key}`, () => api.sync(p.key), "已同步")}>
             {busy === `sync:${p.key}` ? <Spinner /> : <RefreshCw />}
           </IconButton>
