@@ -84,9 +84,15 @@ python3 scripts/e2e.py   # macOS；程序不在默认位置时用环境变量 PL
 
 ## 发布
 
-版本号在四个地方：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`，还有 `src-tauri/src/util.rs` 里的 `HUB_VERSION`。
+一条命令：
 
-打一个 `v1.2.0` 这样的 tag 推到 GitHub，Actions（`.github/workflows/release.yml`）会在 Windows 和 macOS 上各构建一份（NSIS 安装包、通用的 dmg），改成英文文件名，建一个草稿 Release。检查过后，在网页上点 Publish。
+```bash
+python3 scripts/release.py 1.3.1
+```
+
+它把四处版本号（`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/src/util.rs` 里的 `HUB_VERSION`，外加 `Cargo.lock`）改成新的，构建一遍页面、`cargo check` 一遍 Rust 确认能编过，重新生成项目主页，提交「发布 v1.3.1」，打 tag，把 main 和 tag 推上 GitHub。要求在 main 上、工作区干净、和 origin/main 一致，不满足就什么都不改。
+
+tag 推上去后，Actions（`.github/workflows/release.yml`）会在 Windows 和 macOS 上各构建一份（NSIS 安装包、通用的 dmg），改成英文文件名，建一个草稿 Release。检查过后，在网页上点 Publish。项目主页在 GitHub Pages 开着时（Settings → Pages → main 分支根目录，设一次就行）随 main 自动更新。
 
 点了 Publish，装着旧版本的插件中心下次打开就会在顶栏提示有新版本：页面问的是 GitHub 的 `releases/latest` 接口（`src/lib/release.ts`），只认正式发布，草稿和预发布不算，所以 tag 推上去但还没 Publish 时不会提示。
 

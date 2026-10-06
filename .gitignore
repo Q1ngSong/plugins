@@ -25,3 +25,4 @@ __pycache__/
 # dclh 的 codegraph 索引和由 .comment-standard.json 派生的配置
 pluginhub/.codegraph/
 pluginhub/codegraph.json
+.DS_Store
