@@ -203,7 +203,7 @@ export default function App() {
             {current.name === "plugin" && plugin && <PluginView p={plugin} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
               onInstall={(apps) => setInstalling({ key: plugin.key, apps })} />}
             {current.name === "add" && <AddView initialRepo={current.repo} busy={busy} run={run} onDone={(key) => setView({ name: "plugin", key })} />}
-            {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} openDirect={openDirect} onOpenDirect={setOpenDirect} newVersion={newVersion} onNewVersion={openNewVersion} />}
+            {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} openDirect={openDirect} onOpenDirect={setOpenDirect} release={release} newVersion={newVersion} onNewVersion={openNewVersion} />}
         </div>
       </main>
       {installing && plugin && installing.key === plugin.key && (

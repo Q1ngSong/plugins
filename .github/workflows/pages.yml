@@ -1,0 +1,39 @@
+# 项目主页：main 分支一有改动就把根目录的 index.html、插图和样式发到 GitHub Pages。
+# 仓库 Settings → Pages 的来源要选「GitHub Actions」，这个工作流才接得上。
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: [index.html, assets/**, site/**, .github/workflows/pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      # 只发网页用得到的几样，不把整个仓库的源码也放上去
+      - run: |
+          mkdir -p public/site
+          cp index.html .nojekyll public/
+          cp -r assets public/
+          cp site/style.css public/site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4
