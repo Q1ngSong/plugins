@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/common/bits";
 import { api, exeName, State, taskKind, when } from "@/lib/api";
+import type { Release } from "@/lib/release";
 import type { Run } from "@/lib/useRun";
 
 const INTERVALS: [number, string][] = [[15, "每 15 分钟"], [30, "每 30 分钟"], [60, "每小时"], [360, "每 6 小时"], [1440, "每天"]];
@@ -16,10 +17,12 @@ const Card = ({ title, children, desc }: { title: string; desc?: string; childre
   </section>
 );
 
-export function SettingsView({ state, busy, run, openDirect, onOpenDirect }: {
+export function SettingsView({ state, busy, run, openDirect, onOpenDirect, newVersion, onNewVersion }: {
   state: State; busy: string | null; run: Run;
   /** 点插件名时直接打开存放位置，不先问一下（弹窗里点「以后都直接打开」也会打开它） */
   openDirect: boolean; onOpenDirect: (v: boolean) => void;
+  /** 插件中心自己的新版本：null 是问过 GitHub 了没有更新，undefined 是还没问到；点它看说明和下载 */
+  newVersion: Release | null | undefined; onNewVersion: () => void;
 }) {
   const auto = state.hub.auto;
   const on = !!(auto.enabled && auto.installed);
@@ -105,7 +108,12 @@ export function SettingsView({ state, busy, run, openDirect, onOpenDirect }: {
         <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">{state.log.join("\n") || "暂无记录"}</pre>
       </Card>
 
-      <p className="text-center text-xs text-muted-foreground">插件中心 {state.hub.version} · 数据更新于 {when(state.generated_at)}</p>
+      <p className="text-center text-xs text-muted-foreground">
+        插件中心 {state.hub.version}
+        {newVersion && <> · <button type="button" className="font-medium text-orange-600 hover:underline dark:text-orange-400" onClick={onNewVersion}>有新版本 {newVersion.version}</button></>}
+        {newVersion === null && "（已是最新）"}
+        {" "}· 数据更新于 {when(state.generated_at)}
+      </p>
     </div>
   );
 }

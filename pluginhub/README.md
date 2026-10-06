@@ -88,6 +88,8 @@ python3 scripts/e2e.py   # macOS；程序不在默认位置时用环境变量 PL
 
 打一个 `v1.2.0` 这样的 tag 推到 GitHub，Actions（`.github/workflows/release.yml`）会在 Windows 和 macOS 上各构建一份（NSIS 安装包、通用的 dmg），改成英文文件名，建一个草稿 Release。检查过后，在网页上点 Publish。
 
+点了 Publish，装着旧版本的插件中心下次打开就会在顶栏提示有新版本：页面问的是 GitHub 的 `releases/latest` 接口（`src/lib/release.ts`），只认正式发布，草稿和预发布不算，所以 tag 推上去但还没 Publish 时不会提示。
+
 ## 插图
 
 根目录 README 的插图在 `assets/`，都是 SVG 文件，改文字可以直接改文件里的 `<text>`。
