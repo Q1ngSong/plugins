@@ -2,7 +2,7 @@
 
 做的事：把四处版本号（和 Cargo.lock）改成新的，快速检查一遍代码能过，重新生成项目主页，
 提交到 main，打 v1.3.1 的 tag，把 main 和 tag 一起推上 GitHub。之后 Actions 会构建两个平台的安装包，
-建一个草稿 Release，到网页上检查、点 Publish 就发布了（装着旧版的插件中心会提示有新版本）。
+直接发成正式 Release（装着旧版的插件中心会提示并自动更新）。
 
 先决条件：在 main 上、工作区干净、本地 main 和 origin/main 一致。不满足就停下，什么都不改。
 """
@@ -72,9 +72,9 @@ def main():
     run("git", "commit", "-m", f"发布 {tag}")
     run("git", "tag", tag)
     run("git", "push", "origin", "main", tag)
-    print(f"""已推送 {tag}。接下来：
-  1. 看构建：https://github.com/Q1ngSong/plugins/actions
-  2. 构建完成后检查草稿里的两个安装包，点 Publish：https://github.com/Q1ngSong/plugins/releases
+    print(f"""已推送 {tag}。Actions 会构建并直接发布（约 8 分钟）：
+  看构建：https://github.com/Q1ngSong/plugins/actions
+  发布页：https://github.com/Q1ngSong/plugins/releases
   项目主页在 Pages 开着时会随 main 自动更新（Settings → Pages → main 分支根目录，只需设一次）。""")
 
 

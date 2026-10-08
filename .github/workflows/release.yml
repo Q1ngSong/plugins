@@ -1,5 +1,5 @@
-# 打 tag（v1.3.0 这样）就构建 Windows 安装包和 macOS 的 DMG，并建一个草稿 Release 把它们挂上去。
-# 检查过草稿没问题，再在 GitHub 页面上点 Publish。手动触发（workflow_dispatch）只构建、不发布。
+# 打 tag（v1.3.0 这样）就构建 Windows 安装包和 macOS 的 DMG，直接发成正式 Release，用户马上能下载，
+# 装了旧版的插件中心也会立刻提示更新。手动触发（workflow_dispatch）只构建、不发布。
 name: release
 
 on:
@@ -119,7 +119,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
           name: 插件中心 ${{ github.ref_name }}
           files: out/*
           body: |
