@@ -43,7 +43,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.89.0
+          toolchain: 1.90.0
           targets: ${{ matrix.targets }}
 
       - uses: swatinem/rust-cache@v2
@@ -52,8 +52,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # beforeBuildCommand 会先构建页面（pnpm build:renderer），再打安装包
+      # beforeBuildCommand 会先构建页面（pnpm build:renderer），再打安装包。
+      # 私钥用来给更新包签名（createUpdaterArtifacts），应用里带着对应的公钥，自我更新时校验
       - run: pnpm tauri build ${{ matrix.build }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # 安装包的文件名里有中文，GitHub 会把它改掉，换成英文名再上传
       - name: Rename installer (Windows)
@@ -64,6 +68,7 @@ jobs:
           $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $setup.FullName "out/PluginHub_${version}_x64-setup.exe"
+          Copy-Item "$($setup.FullName).sig" "out/PluginHub_${version}_x64-setup.exe.sig"
           Get-ChildItem out
 
       - name: Rename dmg (macOS)
@@ -72,6 +77,9 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           mkdir -p out
           cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg "out/PluginHub_${version}_universal.dmg"
+          # 自我更新用的是 .app.tar.gz 和它的签名，不是 dmg
+          cp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz "out/PluginHub_${version}_universal.app.tar.gz"
+          cp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig "out/PluginHub_${version}_universal.app.tar.gz.sig"
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -88,6 +96,26 @@ jobs:
         with:
           path: out
           merge-multiple: true
+
+      # 更新清单：应用启动时读它，比版本号、按平台取下载地址和签名。通用版 .app 同时给两种 Mac 用
+      - name: Write latest.json
+        run: |
+          python3 - <<'EOF'
+          import json, pathlib, datetime
+          tag = "${{ github.ref_name }}"; version = tag.lstrip("v")
+          base = f"https://github.com/${{ github.repository }}/releases/download/{tag}/"
+          out = pathlib.Path("out")
+          def entry(name):
+              return {"url": base + name, "signature": (out / (name + ".sig")).read_text().strip()}
+          mac = entry(f"PluginHub_{version}_universal.app.tar.gz")
+          win = entry(f"PluginHub_{version}_x64-setup.exe")
+          (out / "latest.json").write_text(json.dumps({
+              "version": version,
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+              "platforms": {"darwin-aarch64": mac, "darwin-x86_64": mac, "windows-x86_64": win},
+          }, indent=2))
+          EOF
+          cat out/latest.json
 
       - uses: softprops/action-gh-release@v2
         with:

@@ -181,7 +181,7 @@ export interface Result { notes: string[]; state: State }
 
 declare global { interface Window { HUB_TOKEN?: string; __TAURI_INTERNALS__?: unknown } }
 const TOKEN = window.HUB_TOKEN ?? "";
-const IN_APP = "__TAURI_INTERNALS__" in window;
+export const IN_APP = "__TAURI_INTERNALS__" in window;
 
 async function call<T>(path: string, body?: unknown): Promise<T> {
   if (IN_APP) {

@@ -94,7 +94,9 @@ python3 scripts/release.py 1.3.1
 
 tag 推上去后，Actions（`.github/workflows/release.yml`）会在 Windows 和 macOS 上各构建一份（NSIS 安装包、通用的 dmg），改成英文文件名，建一个草稿 Release。检查过后，在网页上点 Publish。项目主页在 GitHub Pages 开着时（Settings → Pages → main 分支根目录，设一次就行）随 main 自动更新。
 
-点了 Publish，装着旧版本的插件中心下次打开就会在顶栏提示有新版本：页面问的是 GitHub 的 `releases/latest` 接口（`src/lib/release.ts`），只认正式发布，草稿和预发布不算，所以 tag 推上去但还没 Publish 时不会提示。
+点了 Publish，装着旧版本的插件中心下次打开就会提示有新版本，并能自己下载装上（`src/lib/update.ts`，用的是 Tauri 的 updater 插件）。它读的是 Release 里的 `latest.json`（release 作业生成，列出各平台更新包的地址和签名），只认正式发布，草稿不算，所以 tag 推上去但还没 Publish 时不会提示。浏览器版装不了自己，只提示并打开下载页（`src/lib/release.ts` 问 GitHub 的 `releases/latest` 接口）。
+
+更新包要签名，应用只认用项目私钥签过的包，公钥在 `tauri.conf.json` 的 `plugins.updater.pubkey`。私钥不在仓库里，构建时从仓库的 Secrets 读：`TAURI_SIGNING_PRIVATE_KEY`（私钥文件的整个内容）。密钥没设密码，所以不用建 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（GitHub 也不让建空值的 Secret）；以后换成带密码的密钥再加它。换了私钥要同时换公钥，否则旧版本校验不过、装不上更新。本机打包时把私钥内容放进 `TAURI_SIGNING_PRIVATE_KEY` 环境变量（`export TAURI_SIGNING_PRIVATE_KEY=$(cat ~/.tauri/pluginhub.key)`）。
 
 ## 插图
 

@@ -15,7 +15,7 @@ import { InstallDialog } from "@/components/views/InstallDialog";
 import { AddView } from "@/components/views/AddView";
 import { SettingsView } from "@/components/views/SettingsView";
 import { api, APP_NAME, APPS, AppKey, fileManager, isSkill, storageFolder, when } from "@/lib/api";
-import { isNewer, latestRelease } from "@/lib/release";
+import { useHubUpdate } from "@/lib/update";
 import { useRun } from "@/lib/useRun";
 import { cn } from "@/lib/utils";
 
@@ -45,8 +45,8 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [installing, setInstalling] = useState<{ key: string; apps: AppKey[] } | null>(null);
   const { data: state, error } = useQuery({ queryKey: ["state"], queryFn: api.state, refetchInterval: 60_000 });
-  // 插件中心自己有没有新版本：打开时问一次 GitHub，之后每 6 小时再看一眼；问不到就不提示
-  const { data: release, refetch: recheckRelease } = useQuery({ queryKey: ["release"], queryFn: latestRelease, staleTime: 6 * 3600_000, refetchInterval: 6 * 3600_000 });
+  // 插件中心自己有没有新版本：打开时查一次，之后每 6 小时查一次
+  const update = useHubUpdate(state?.hub.version ?? "");
   const { confirm, dialog } = useConfirm();
   const { busy, run } = useRun();
   const openProject = async () => {
@@ -71,18 +71,17 @@ export default function App() {
   if (error) return <div className="p-10 text-center text-sm text-red-500">无法读取状态：{String((error as Error).message ?? error)}<br /><span className="text-muted-foreground">重新打开插件中心试试。</span></div>;
   if (!state) return <div className="flex h-screen items-center justify-center gap-2 text-sm text-muted-foreground"><Spinner />正在读取…</div>;
 
-  // 比正在运行的版本新的发布；null 是问过了没有更新，undefined 是还没问到
-  const newVersion = release === undefined ? undefined : release && isNewer(release.version, state.hub.version) ? release : null;
+  const newVersion = update.phase === "found" ? update.found : null;
   const openNewVersion = async () => {
     if (!newVersion) return;
     const notes = newVersion.notes.trim();
     const body = [
-      `当前 ${state.hub.version}，GitHub 上 ${when(newVersion.at)} 发布了 ${newVersion.version}。`,
+      `当前 ${state.hub.version}，${newVersion.at ? `${when(newVersion.at)} 发布了` : "GitHub 上发布了"} ${newVersion.version}。`,
       notes.length > 1500 ? `${notes.slice(0, 1500)}…` : notes,
-      `在浏览器里打开发布页，下载新的安装包：\n${newVersion.url}`,
+      update.canInstall ? "下载并安装新版本，装好后插件中心会自动重新打开；配置和插件都保留。" : `在浏览器里打开发布页，下载新的安装包：\n${newVersion.url}`,
     ].filter(Boolean).join("\n\n");
-    if (await confirm({ title: `插件中心有新版本 ${newVersion.version}`, body, okText: "打开发布页" })) {
-      api.open(newVersion.url).catch((e) => toast.error("打不开", { description: String(e.message ?? e) }));
+    if (await confirm({ title: `插件中心有新版本 ${newVersion.version}`, body, okText: update.canInstall ? "下载并安装" : "打开发布页" })) {
+      update.install().catch((e) => toast.error("更新失败", { description: String(e.message ?? e) }));
     }
   };
 
@@ -153,7 +152,7 @@ export default function App() {
                 })}
               </div>
               <div className="inline-flex gap-1 rounded-xl bg-muted p-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" title="检查更新（插件的和插件中心自己的）" disabled={!!busy} onClick={() => { recheckRelease(); run("check", api.check, "检查完了"); }}>
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="检查更新（插件的和插件中心自己的）" disabled={!!busy} onClick={() => { update.check(); run("check", api.check, "检查完了"); }}>
                   {busy === "check" ? <Spinner /> : <RefreshCw className="h-4 w-4" />}
                 </Button>
               </div>
@@ -203,7 +202,7 @@ export default function App() {
             {current.name === "plugin" && plugin && <PluginView p={plugin} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
               onInstall={(apps) => setInstalling({ key: plugin.key, apps })} />}
             {current.name === "add" && <AddView initialRepo={current.repo} busy={busy} run={run} onDone={(key) => setView({ name: "plugin", key })} />}
-            {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} openDirect={openDirect} onOpenDirect={setOpenDirect} release={release} newVersion={newVersion} onNewVersion={openNewVersion} />}
+            {current.name === "settings" && <SettingsView state={state} busy={busy} run={run} openDirect={openDirect} onOpenDirect={setOpenDirect} update={update} onNewVersion={openNewVersion} />}
         </div>
       </main>
       {installing && plugin && installing.key === plugin.key && (

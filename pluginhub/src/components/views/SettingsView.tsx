@@ -1,10 +1,10 @@
-import { CheckCircle2, FolderOpen, XCircle } from "lucide-react";
+import { CheckCircle2, CircleArrowUp, FolderOpen, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/common/bits";
 import { api, exeName, State, taskKind, when } from "@/lib/api";
-import type { Release } from "@/lib/release";
+import type { HubUpdate } from "@/lib/update";
 import type { Run } from "@/lib/useRun";
 
 const INTERVALS: [number, string][] = [[15, "每 15 分钟"], [30, "每 30 分钟"], [60, "每小时"], [360, "每 6 小时"], [1440, "每天"]];
@@ -17,14 +17,12 @@ const Card = ({ title, children, desc }: { title: string; desc?: string; childre
   </section>
 );
 
-export function SettingsView({ state, busy, run, openDirect, onOpenDirect, release, newVersion, onNewVersion }: {
+export function SettingsView({ state, busy, run, openDirect, onOpenDirect, update, onNewVersion }: {
   state: State; busy: string | null; run: Run;
   /** 点插件名时直接打开存放位置，不先问一下（弹窗里点「以后都直接打开」也会打开它） */
   openDirect: boolean; onOpenDirect: (v: boolean) => void;
-  /** GitHub 上最新一次正式发布：null 是问过了、一个版本都没发过，undefined 是还没问到 */
-  release: Release | null | undefined;
-  /** 其中比正在运行的新的那个；点它看说明和下载 */
-  newVersion: Release | null | undefined; onNewVersion: () => void;
+  /** 插件中心自己的更新；onNewVersion 弹出说明和安装确认 */
+  update: HubUpdate; onNewVersion: () => void;
 }) {
   const auto = state.hub.auto;
   const on = !!(auto.enabled && auto.installed);
@@ -106,16 +104,32 @@ export function SettingsView({ state, busy, run, openDirect, onOpenDirect, relea
         </div>
       </Card>
 
+      <Card title="插件中心" desc={update.canInstall ? "打开时和每 6 小时查一次 GitHub 上有没有新版本。新版本会下载后装上，装完自动重新打开，配置和插件都保留。" : "浏览器版只能查有没有新版本，装新版本要下载安装包。"}>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span>当前 {state.hub.version}</span>
+          {update.phase === "found" && update.found && (
+            <Button size="sm" onClick={onNewVersion}><CircleArrowUp className="h-3.5 w-3.5" />有新版本 {update.found.version}{update.canInstall ? "，安装" : "，去下载"}</Button>
+          )}
+          {update.phase === "downloading" && <span className="flex items-center gap-2 text-muted-foreground"><Spinner />{update.progress === null ? "正在下载…" : `正在下载 ${update.progress}%`}</span>}
+          {update.phase === "done" && <span className="text-muted-foreground">装好了，正在重新打开…</span>}
+          {["idle", "none", "error", "checking"].includes(update.phase) && (
+            <Button variant="outline" size="sm" disabled={update.phase === "checking"} onClick={update.check}>{update.phase === "checking" && <Spinner />}检查更新</Button>
+          )}
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {update.phase === "none" && "已是最新版本"}
+          {update.phase === "error" && <span className="text-red-500">查不到：{update.error}</span>}
+          {update.phase === "idle" && "还没查过"}
+          {update.phase === "checking" && "正在查…"}
+          {update.phase === "found" && update.found?.notes.trim() && <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-3 font-mono text-[11.5px] leading-relaxed">{update.found.notes.trim()}</pre>}
+        </div>
+      </Card>
+
       <Card title="日志" desc="最新的在最上面">
         <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">{state.log.join("\n") || "暂无记录"}</pre>
       </Card>
 
-      <p className="text-center text-xs text-muted-foreground">
-        插件中心 {state.hub.version}
-        {newVersion && <> · <button type="button" className="font-medium text-orange-600 hover:underline dark:text-orange-400" onClick={onNewVersion}>有新版本 {newVersion.version}</button></>}
-        {newVersion === null && (release ? "（已是最新）" : "（GitHub 上还没有发布的版本）")}
-        {" "}· 数据更新于 {when(state.generated_at)}
-      </p>
+      <p className="text-center text-xs text-muted-foreground">插件中心 {state.hub.version} · 数据更新于 {when(state.generated_at)}</p>
     </div>
   );
 }
