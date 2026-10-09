@@ -1,6 +1,6 @@
 [package]
 name = "pluginhub"
-version = "1.4.0"
+version = "1.4.1"
 description = "插件中心：统一管理 Claude Code 和 Codex 的插件"
 edition = "2021"
 rust-version = "1.90.0"
