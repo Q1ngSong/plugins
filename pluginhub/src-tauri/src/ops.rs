@@ -826,6 +826,39 @@ pub fn act_install(body: &Value) -> R<Vec<String>> {
     Ok(notes)
 }
 
+/// 收编：本机原有的独立 skill 挪进 ~/.yuwanplugins/skills 统一存放，原位置换成链接，不装到别的 app。
+/// 一次可以收编好几个（keys），一个出错不耽误别的，出错的写在结果里。
+pub fn act_adopt(body: &Value) -> R<Vec<String>> {
+    let keys: Vec<String> = ga(body, "keys").iter().filter_map(Value::as_str).map(str::to_string).collect();
+    if keys.is_empty() {
+        bail!("没有要收编的技能。");
+    }
+    let mut notes = Vec::new();
+    let mut failed = 0;
+    for key in &keys {
+        let row = find_row(key)?;
+        if gs(&row, "kind") != "skill" || gb(&row, "official") {
+            bail!("{key} 不是本机原有的独立技能。");
+        }
+        if gb(&row["skill"], "ours") {
+            continue; // 已经归插件中心管了
+        }
+        match crate::skills::install(&row, &[]) {
+            Ok(ns) => notes.extend(ns),
+            Err(e) => {
+                failed += 1;
+                let n = format!("[{}] 没收编：{e}", gs(&row, "name"));
+                log(&n);
+                notes.push(n);
+            }
+        }
+    }
+    if failed > 0 && failed == keys.len() {
+        bail!("{}", notes.join("\n"));
+    }
+    Ok(notes)
+}
+
 /// 指定了 app 就只从那个 app 卸载；没指定就从所有装了它的 app 卸载（官方自带的不动）
 pub fn act_uninstall(body: &Value) -> R<Vec<String>> {
     if gs(body, "key").starts_with("skill:") {
@@ -1078,6 +1111,7 @@ fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
             add_source(gs(body, "repo"), gs(body, "branch"), true, &body_apps(body), body.get("path").and_then(Value::as_str), &skills)
         }
         "install" => act_install(body),
+        "adopt" => act_adopt(body),
         "uninstall" => act_uninstall(body),
         "sync" => act_sync(body),
         "verify" => {
@@ -1104,6 +1138,7 @@ pub fn dispatch(name: &str, body: &Value) -> Result<Value, (u16, Value)> {
             fail(500, format!("读取状态出错：{e}"))
         }),
         "probe" => probe_repo(gs(body, "repo")).map_err(|e| fail(400, e.to_string())),
+        "search" => crate::registry::search(gs(body, "q")).map(|list| json!({"skills": list})).map_err(|e| fail(400, e.to_string())),
         "open" => open_target(gs(body, "target")).map(|_| json!({"notes": []})).map_err(|e| fail(400, e.to_string())),
         _ => {
             let guard = match OP.try_lock() {

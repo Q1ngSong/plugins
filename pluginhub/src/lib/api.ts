@@ -176,6 +176,9 @@ export interface Probe {
   branches_total: number;
 }
 
+/** skills.sh 上搜到的一个技能：url 是它在 skills.sh 的页面，添加页认得 */
+export interface WebSkill { name: string; source: string; skill: string; installs: number; url: string }
+
 /** 改动类接口都返回做了什么和最新状态 */
 export interface Result { notes: string[]; state: State }
 
@@ -213,6 +216,10 @@ export const api = {
   updateAll: () => call<Result>("/api/update", {}),
   sync: (key: string) => call<Result>("/api/sync", { key }),
   install: (key: string, apps: AppKey[]) => call<Result>("/api/install", { key, apps }),
+  /** 收编本机原有的独立技能：挪进 ~/.yuwanplugins/skills 统一存放，原位置换成链接 */
+  adopt: (keys: string[]) => call<Result>("/api/adopt", { keys }),
+  /** 在 skills.sh 上搜技能 */
+  search: (q: string) => call<{ skills: WebSkill[] }>("/api/search", { q }),
   uninstall: (key: string, target?: { id: string; app: AppKey }) => call<Result>("/api/uninstall", { key, ...target }),
   verify: (key: string, app?: AppKey) => call<Result>("/api/verify", { key, app }),
   /** 只看 Codex 的技能清单超没超上限 */
@@ -247,6 +254,8 @@ export const isOurs = (p: Plugin) => !!p.managed || !!p.skill?.ours;
 export const installedApps = (p: Plugin) => p.apps.filter((a) => a.installed);
 export const canDelete = (p: Plugin) => !p.official && (isOurs(p) || p.apps.some((a) => a.installed && !a.official));
 /** 独立的 skill 没有远端可拉，只有统一存放的才能同步（补链接）；受管插件总能同步（拉取、补链接） */
+/** 本机原有、还不归插件中心管的独立技能，能收编的：有真实的文件夹（指向别处的链接插件中心不动）*/
+export const canAdopt = (p: Plugin) => isSkill(p) && !p.official && !p.skill?.ours && p.apps.some((a) => a.installed && !a.official && !a.linked);
 export const canSync = (p: Plugin) => (isSkill(p) ? !!p.skill?.ours : !p.official && (!!p.managed || p.apps.some((a) => a.installed)));
 /** token 数：粗估的，取整到十位 */
 export const tokens = (n: number) => (n < 100 ? String(n) : (Math.round(n / 10) * 10).toLocaleString("en-US"));

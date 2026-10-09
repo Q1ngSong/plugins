@@ -1,8 +1,10 @@
-import { AlertTriangle, Lock, Plus, Puzzle, Scissors, ScrollText, Search, ShieldCheck, Wrench } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, FolderInput, Globe, Lock, Plus, Puzzle, Scissors, ScrollText, Search, ShieldCheck, Wrench } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AppChip, Spinner, Tag } from "@/components/common/bits";
 import { PluginActions } from "@/components/common/PluginActions";
-import { api, APP_NAME, AppKey, exeName, installedApps, isOurs, isSkill, Kind, Plugin, State, tokens, troubledApps, when } from "@/lib/api";
+import { api, APP_NAME, AppKey, canAdopt, exeName, installedApps, isOurs, isSkill, Kind, Plugin, State, tokens, troubledApps, WebSkill, when } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 import type { ConfirmFn } from "@/App";
 import { cn } from "@/lib/utils";
@@ -75,8 +77,75 @@ function CodexSkills({ state, busy, run }: { state: State; busy: string | null; 
   );
 }
 
+/* 本机原有的技能不归插件中心管：提示一下，想管的话一键收编 */
+function Unmanaged({ list, busy, run, confirm }: { list: Plugin[]; busy: string | null; run: Run; confirm: ConfirmFn }) {
+  if (!list.length) return null;
+  const adopt = async () => {
+    const body = `把这 ${list.length} 个技能挪进 ~/.yuwanplugins/skills 统一存放，原来的位置换成链接。文件不会少，app 照常读到；之后后台检查会守着这些链接，装到另一个 app 也只要再放个链接。不想管的以后可以从所有 app 删除，文件夹会进备份。`;
+    if (await confirm({ title: "交给插件中心管", body, okText: "全部收编" })) run("adopt-all", () => api.adopt(list.map((p) => p.key)), "收编完了");
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-blue-500/25 bg-blue-500/[.07] px-3.5 py-2 text-[13px] text-blue-900 dark:text-blue-200">
+      <FolderInput className="h-4 w-4 flex-none" />
+      <span className="min-w-0 flex-1">本机有 {list.length} 个技能不归插件中心管：只列出来，不检查链接、不记来源。交给它管的话会统一存放，原位置换成链接，文件不动。</span>
+      <Button size="sm" variant="outline" disabled={!!busy} onClick={adopt}>{busy === "adopt-all" && <Spinner />}全部收编</Button>
+    </div>
+  );
+}
+
+/* 本机没有或不够时，到 skills.sh 上搜：输入停下半秒才查，结果列在本机的下面 */
+function WebResults({ query, local, onAdd }: { query: string; local: Plugin[]; onAdd: (repo: string) => void }) {
+  const [state, setState] = useState<{ q: string; list: WebSkill[]; error: string; loading: boolean }>({ q: "", list: [], error: "", loading: false });
+  const q = query.trim();
+  useEffect(() => {
+    if (q.length < 2) { setState({ q, list: [], error: "", loading: false }); return; }
+    setState((s) => ({ ...s, loading: true }));
+    const timer = setTimeout(async () => {
+      try { const r = await api.search(q); setState({ q, list: r.skills, error: "", loading: false }); }
+      catch (e) { setState({ q, list: [], error: (e as Error).message, loading: false }); }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [q]);
+  if (q.length < 2) return null;
+  const have = new Set(local.map((p) => p.name.toLowerCase()));
+  const open = (url: string) => api.open(url).catch((e) => toast.error("打不开", { description: String(e.message ?? e) }));
+  return (
+    <section className="mt-1">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+        <Globe className="h-3.5 w-3.5" />skills.sh 上的
+        {state.loading && <Spinner />}
+      </div>
+      {state.error && <p className="text-xs text-muted-foreground">没搜到：{state.error}</p>}
+      {!state.loading && !state.error && state.q === q && !state.list.length && <p className="text-xs text-muted-foreground">skills.sh 上没有匹配「{q}」的技能</p>}
+      {state.list.length > 0 && (
+        <div className="columns-[200px] gap-3">
+          {state.list.map((s) => {
+            const has = have.has(s.name.toLowerCase());
+            return (
+              <div key={s.url} className="mb-3 flex break-inside-avoid flex-col gap-2 rounded-2xl border border-dashed bg-card/60 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <button type="button" title="在浏览器里打开它在 skills.sh 的页面，看说明再决定" onClick={() => open(s.url)}
+                      className="break-all text-left text-[15px] font-semibold leading-snug hover:text-blue-500 hover:underline">{s.name}</button>
+                    <button type="button" title="打开仓库的 GitHub 页面" onClick={() => open(`https://github.com/${s.source}`)}
+                      className="mt-1 block break-all text-left text-xs text-muted-foreground hover:text-blue-500 hover:underline">{s.source}</button>
+                  </div>
+                  {has ? <Tag tone="emerald">本机已有</Tag> : (
+                    <Button size="sm" variant="outline" className="flex-none" onClick={() => onAdd(s.url)}><Plus className="h-3.5 w-3.5" />添加</Button>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">{s.installs.toLocaleString("en-US")} 次安装</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpen, onAdd, onInstall }: {
-  state: State; filter: Filter; kind: KindFilter; query: string; busy: string | null; run: Run; confirm: ConfirmFn; onOpen: (key: string) => void; onAdd: () => void; onInstall: (key: string) => void;
+  state: State; filter: Filter; kind: KindFilter; query: string; busy: string | null; run: Run; confirm: ConfirmFn; onOpen: (key: string) => void; onAdd: (repo?: string) => void; onInstall: (key: string) => void;
 }) {
   // 搜索：每个词都要出现在名字、介绍、仓库地址或两边的插件名里
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -86,10 +155,12 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
     && words.every((w) => text(p).includes(w)));
   const pending = state.plugins.filter((p) => p.managed?.needs_update).length;
   const what = kind === "skill" ? "技能" : kind === "plugin" ? "插件" : "插件或技能";
+  const unmanaged = kind !== "plugin" && !words.length ? state.plugins.filter(canAdopt) : [];
 
   return (
     <div className="flex flex-col gap-3">
       <Notices state={state} busy={busy} run={run} />
+      <Unmanaged list={unmanaged} busy={busy} run={run} confirm={confirm} />
       {pending > 0 && (
         <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-[13px] text-amber-900 dark:text-amber-200">
           <span>{pending} 个插件有新版本</span><span className="flex-1" />
@@ -102,7 +173,7 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
       {list.length === 0 && words.length > 0 ? (
         <div className="rounded-xl border-[1.5px] border-dashed p-10 text-center">
           <div className="mx-auto mb-2.5 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground"><Search className="h-6 w-6" /></div>
-          <div className="text-base font-semibold">没有匹配「{query.trim()}」的{what}</div>
+          <div className="text-base font-semibold">本机没有匹配「{query.trim()}」的{what}</div>
           <div className="mt-1 text-sm text-muted-foreground">按名字、介绍、仓库地址和两边的插件名搜，多个词用空格隔开</div>
         </div>
       ) : list.length === 0 ? (
@@ -116,7 +187,7 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
           ) : (
             <>
               <div className="mt-1 text-sm text-muted-foreground">点右上角橙色 + 添加一个插件仓库</div>
-              <Button className="mt-4" onClick={onAdd}><Plus className="h-4 w-4" />添加插件</Button>
+              <Button className="mt-4" onClick={() => onAdd()}><Plus className="h-4 w-4" />添加插件</Button>
             </>
           )}
         </div>
@@ -165,6 +236,7 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
           })}
         </div>
       )}
+      {kind !== "plugin" && <WebResults query={query} local={state.plugins.filter(isSkill)} onAdd={onAdd} />}
     </div>
   );
 }

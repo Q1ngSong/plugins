@@ -197,7 +197,7 @@ export default function App() {
 
       <main className={cn("mx-auto px-6 pb-20 pt-6", current.name === "home" ? "max-w-[1200px]" : "max-w-[860px]")}>
         <div key={current.name + (current.name === "plugin" ? current.key : "")} className={current.name === "home" ? "animate-fade-in" : "animate-slide-in"}>
-            {current.name === "home" && <HomeView state={state} filter={filter} kind={kind} query={query} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={() => setView({ name: "add" })}
+            {current.name === "home" && <HomeView state={state} filter={filter} kind={kind} query={query} busy={busy} run={run} confirm={confirm} onOpen={(key) => setView({ name: "plugin", key })} onAdd={(repo) => setView({ name: "add", repo })}
               onInstall={(key) => { const p = state.plugins.find((x) => x.key === key); setView({ name: "plugin", key }); if (p) setInstalling({ key, apps: p.installable }); }} />}
             {current.name === "plugin" && plugin && <PluginView p={plugin} busy={busy} run={run} confirm={confirm} onAdopt={(repo) => setView({ name: "add", repo })}
               onInstall={(apps) => setInstalling({ key: plugin.key, apps })} />}

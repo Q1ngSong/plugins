@@ -17,6 +17,7 @@ mod codex;
 mod gitx;
 mod ops;
 mod platform;
+mod registry;
 mod schedule;
 mod server;
 mod skills;

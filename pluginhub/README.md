@@ -13,7 +13,8 @@ src-tauri/src/          程序（Rust，Tauri 2）
   ops.rs                各项操作和接口分发
   view.rs               状态汇总、移植 skill
   claude.rs, codex.rs   两边的适配：状态、链接、卸载、真实检查（Codex 还看技能清单超没超上限）
-  skills.rs             独立的技能：扫描两边的 skills 文件夹、统一存放、链接、删除、检查
+  skills.rs             独立的技能：扫描两边的 skills 文件夹、统一存放（收编）、链接、删除、检查
+  registry.rs           搜 skills.sh 上的技能（代理跟 git 的 http.proxy 走）
   gitx.rs               git：克隆、拉取、本地修改检测、读清单、备份
   source.rs             添加框里粘进来的东西怎么认：GitHub 的各种写法、子目录和技能的链接、npx skills add 命令（只认格式，不联网）
   usage.rs              扫描两边的会话记录，统计哪些项目用过插件

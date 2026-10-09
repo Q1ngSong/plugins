@@ -1,7 +1,7 @@
 import { FolderGit2, Lock, PackagePlus, Save, ShieldAlert, ShieldCheck, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppChip, APP_TONE, IconButton, Spinner, Tag } from "@/components/common/bits";
-import { api, APP_NAME, APPS, AppEntry, AppKey, howText, isSkill, Plugin, Project, short, tokens, when } from "@/lib/api";
+import { api, APP_NAME, APPS, AppEntry, AppKey, canAdopt, howText, isSkill, Plugin, Project, short, tokens, when } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 import type { ConfirmFn } from "@/App";
 import { cn } from "@/lib/utils";
@@ -218,7 +218,11 @@ export function PluginView({ p, busy, run, confirm, onAdopt, onInstall }: {
                 克隆在 <code className="break-all font-mono">~/.yuwanplugins/{p.managed.id}</code>，统一存放处 <code className="break-all font-mono">{p.skill.folder}</code> 是指向它的链接，装了它的 app 再链接过去。同步就是拉取仓库，别在克隆里改。</>
               : p.skill?.ours ? <>统一存放在 <code className="break-all font-mono">{p.skill.folder}</code>，装了它的 app 都链接到这里。改这一份，两边都生效。</>
               : p.official ? "Codex 自带的技能，由 Codex 自己管。"
-                : "独立的技能，还不归插件中心管。点右上角的安装，把它装到另一个 app：它会先挪进 ~/.yuwanplugins/skills 统一存放，两边都链接过去。"}
+                : <>独立的技能，还不归插件中心管：只列出来，不检查链接、不记来源。
+                  {canAdopt(p) ? <> 可以<button className="font-medium text-blue-500 hover:underline" disabled={!!busy}
+                    onClick={() => run(`adopt:${p.key}`, () => api.adopt([p.key]), "已收编")}>交给插件中心管</button>：挪进 ~/.yuwanplugins/skills 统一存放，原位置换成链接，文件不动；装到另一个 app 时也会这样做。</>
+                    : " 它是指向别处的链接，插件中心不动别处的文件夹。"}
+                  {busy === `adopt:${p.key}` && <Spinner />}</>}
           </p>
         )}
         {!!p.cost && (
