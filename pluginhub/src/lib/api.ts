@@ -230,6 +230,8 @@ export const api = {
   auto: (enabled: boolean, interval_minutes: number) => call<Result>("/api/auto", { enabled, interval_minutes }),
   guard: (enabled: boolean) => call<Result>("/api/guard", { enabled }),
   lock: (plugin: string, locked: boolean) => call<Result>("/api/lock", { plugin, locked }),
+  /** 受管仓库改成跟另一个分支，换完立刻同步 */
+  branch: (plugin: string, branch: string) => call<Result>("/api/branch", { plugin, branch }),
   save: (plugin: string) => call<Result>("/api/save", { plugin }),
   open: (target: string) => call<Result>("/api/open", { target }),
 };

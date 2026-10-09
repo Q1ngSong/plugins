@@ -95,6 +95,8 @@ export function AddView({ initialRepo, busy, run, onDone }: { initialRepo?: stri
   const clashes = mode === "skills" ? skills.filter((s) => picks.includes(s.path) && clash(s).length > 0) : [];
   const both = !!chosen && (chosen.claude || chosen.codex) && chosen.skills_total > 0;
   const blocked = mode === "plugin" && probe?.managed_as === "plugin";
+  /* 已经在管理的仓库，选了别的分支：这一页只做换分支，换完再回来加东西 */
+  const switching = !!probe?.managed && !!chosen && !!probe.managed_branch && chosen.name !== probe.managed_branch;
   const canAdd = !!probe && !!chosen && apps.length > 0 && !blocked
     && (mode === "plugin" ? usable(chosen, "plugin") && (!mustChoose(chosen) || one !== null) : picks.length > 0 && !clashes.length);
   const notes = probe ? [...probe.input.notes, ...probe.notes] : [];
@@ -145,12 +147,11 @@ export function AddView({ initialRepo, busy, run, onDone }: { initialRepo?: stri
               </div>
             )}
           </div>
-          {blocked ? (
-            <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">{probe.id} 已经装成插件在管理了（一个仓库只管一个插件），可以在它的详情页里安装到别的 app。</p>
-          ) : probe.managed ? (
+          {probe.managed ? (
             <p className="mb-2 rounded-lg bg-sky-500/10 px-3 py-2 text-xs text-sky-900 dark:text-sky-200">
-              这个仓库已经在管理（{probe.id}，跟着 {probe.managed_branch} 分支），接着用那份克隆。
-              {mode === "skills" && probe.managed_as === "plugin" && " 它已经装成了插件，插件自带的技能两边都能用；再单独装，同一个技能会出现两次。"}
+              这个仓库已经在管理（{probe.id}，跟着 {probe.managed_branch} 分支），接着用那份克隆。选别的分支就是改成跟那个分支，仓库地址不能换。
+              {blocked && !switching && " 它已经装成插件了（一个仓库只管一个插件），要装到别的 app 去它的详情页。"}
+              {mode === "skills" && probe.managed_as === "plugin" && !switching && " 它已经装成了插件，插件自带的技能两边都能用；再单独装，同一个技能会出现两次。"}
             </p>
           ) : <p className="mb-3 text-xs text-muted-foreground">以后会跟着这个分支自动更新</p>}
           {!probe.branches.length && <p className="text-sm text-muted-foreground">这个仓库没有分支。</p>}
@@ -158,7 +159,7 @@ export function AddView({ initialRepo, busy, run, onDone }: { initialRepo?: stri
             {probe.branches.map((b) => {
               const ok = usable(b, mode);
               const on = b.name === branch;
-              const dead = !ok || blocked || (!!probe.managed_branch && b.name !== probe.managed_branch);
+              const dead = !ok || (blocked && !probe.managed);
               return (
                 <button key={b.name} type="button" disabled={dead} onClick={() => settle(probe, mode, b)}
                   className={cn("flex items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors",
@@ -194,7 +195,22 @@ export function AddView({ initialRepo, busy, run, onDone }: { initialRepo?: stri
         </section>
       )}
 
-      {probe && mode === "plugin" && chosen && !blocked && mustChoose(chosen) && (
+      {probe && chosen && switching && (
+        <section className="rounded-xl border bg-card p-4">
+          <div className="mb-1 text-sm font-semibold">换成跟 {chosen.name} 分支</div>
+          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            克隆切到 {chosen.name} 分支的最新提交，之后跟着它更新；装进两边的链接和从这里拿的技能都对到新分支上。
+            锁定的、插件文件夹里有修改的不换，先解锁或另存。要加这个分支上别的技能，换完回到这一页再加。
+          </p>
+          <div className="flex justify-end">
+            <Button disabled={!!busy} onClick={async () => { if (await run("branch", () => api.branch(probe.id, chosen.name), "已换分支")) onDone(probe.id); }}>
+              {busy === "branch" && <Spinner />}换分支并同步
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {probe && mode === "plugin" && chosen && !blocked && !switching && mustChoose(chosen) && (
         <section className="rounded-xl border bg-card p-4">
           <div className="mb-1 text-sm font-semibold">选择插件</div>
           <p className="mb-3 text-xs text-muted-foreground">这个仓库的插件源里列了 {choices(chosen).length} 个插件。一个仓库只管一个插件，或者整个装上。</p>
@@ -223,7 +239,7 @@ export function AddView({ initialRepo, busy, run, onDone }: { initialRepo?: stri
         </section>
       )}
 
-      {probe && mode === "skills" && chosen && (
+      {probe && mode === "skills" && chosen && !switching && (
         <section className="rounded-xl border bg-card p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm font-semibold">选择技能（已选 {picks.length} / {skills.length}）</div>
@@ -262,7 +278,7 @@ export function AddView({ initialRepo, busy, run, onDone }: { initialRepo?: stri
         </section>
       )}
 
-      {probe && chosen && !blocked && (mode === "skills" || (usable(chosen, "plugin") && (!mustChoose(chosen) || one !== null))) && (
+      {probe && chosen && !blocked && !switching && (mode === "skills" || (usable(chosen, "plugin") && (!mustChoose(chosen) || one !== null))) && (
         <section className="rounded-xl border bg-card p-4">
           <div className="mb-3 text-sm font-semibold">装到哪些 app</div>
           <AppPicks ok={mode === "skills" ? [...APPS] : pluginApps} value={apps} onChange={setApps} />

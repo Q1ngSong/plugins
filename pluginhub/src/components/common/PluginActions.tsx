@@ -1,13 +1,15 @@
-import { Link2, PackagePlus, RefreshCw, Trash2 } from "lucide-react";
+import { Link2, PackagePlus, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, canDelete, canSync, installedApps, isSkill, APP_NAME, Plugin } from "@/lib/api";
 import type { Run } from "@/lib/useRun";
 import type { ConfirmFn } from "@/App";
 import { IconButton, Spinner } from "./bits";
 
-/* 插件卡片和详情页右上角共用：安装到其他 app、删除（从所有 app）、同步、打开仓库 */
-export function PluginActions({ p, busy, run, confirm, withDelete = true, onInstall }: {
+/* 插件卡片和详情页右上角共用：安装到其他 app、删除（从所有 app）、同步、换分支（详情页才有）、打开仓库 */
+export function PluginActions({ p, busy, run, confirm, withDelete = true, onInstall, onBranch }: {
   p: Plugin; busy: string | null; run: Run; confirm: ConfirmFn; withDelete?: boolean; onInstall?: () => void;
+  /** 受管仓库换跟踪的分支：到添加页选分支 */
+  onBranch?: () => void;
 }) {
   const skill = isSkill(p);
   const pending = !!p.managed?.needs_update || p.apps.some((a) => a.port?.stale)
@@ -47,6 +49,11 @@ export function PluginActions({ p, busy, run, confirm, withDelete = true, onInst
             {busy === `sync:${p.key}` ? <Spinner /> : <RefreshCw />}
           </IconButton>
         </span>
+      )}
+      {onBranch && p.managed && (
+        <IconButton title={`现在跟着 ${p.managed.branch} 分支，点击换一个分支（仓库地址不能换）`} aria-label="换分支" disabled={!!busy} onClick={onBranch}>
+          <Pencil />
+        </IconButton>
       )}
       {p.link && (
         <IconButton title={`打开仓库 ${p.link}`} aria-label="打开仓库"

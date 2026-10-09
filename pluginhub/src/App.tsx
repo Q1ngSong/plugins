@@ -188,7 +188,8 @@ export default function App() {
                     </IconButton>
                   );
                 })()}
-                <PluginActions p={plugin} busy={busy} run={run} confirm={confirm} withDelete={false} />
+                <PluginActions p={plugin} busy={busy} run={run} confirm={confirm} withDelete={false}
+                  onBranch={plugin.managed ? () => setView({ name: "add", repo: plugin.managed!.repo }) : undefined} />
               </div>
             )}
           </>

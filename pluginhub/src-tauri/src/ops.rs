@@ -1039,6 +1039,42 @@ pub fn act_lock(body: &Value) -> R<Vec<String>> {
     Ok(vec![msg])
 }
 
+/// 换分支：同一个仓库，改成跟另一个分支。仓库地址不能换（要换就删掉重加）。
+/// 锁定的、文件夹里有修改的不换，免得把修改弄丢；换完立刻同步一次，链接和技能都对到新分支上。
+pub fn act_branch(body: &Value) -> R<Vec<String>> {
+    let branch = gs(body, "branch").trim().to_string();
+    if branch.is_empty() {
+        bail!("要写分支名。");
+    }
+    let mut cfg = load_config();
+    let p = find_managed(&mut cfg, gs(body, "plugin"))?;
+    if p.branch == branch {
+        bail!("[{}] 已经跟着 {branch} 分支了。", p.id);
+    }
+    if p.locked {
+        bail!("[{}] 已锁定，先解锁再换分支。", p.id);
+    }
+    let d = crate::gitx::fetch(p)?;
+    if crate::gitx::resolve_commit(&d, &format!("origin/{branch}")).is_none() {
+        bail!("[{}] 远端没有 {branch} 分支。", p.id);
+    }
+    let synced = load_state().get(&p.id).and_then(|m| m.get("commit")).and_then(Value::as_str).map(str::to_string);
+    let changes = crate::gitx::local_changes(&d, &p.branch, synced.as_deref());
+    if !changes.is_empty() {
+        bail!("[{}] {}", p.id, crate::gitx::modified_hint(&d, &changes));
+    }
+    // 先把克隆切过去再记下来：同步时「当前分支和跟踪分支不一致」算本地修改，不切就同步不动
+    crate::gitx::git(&["checkout", "-B", &branch, &format!("origin/{branch}")], Some(&d))?;
+    let old = std::mem::replace(&mut p.branch, branch.clone());
+    let id = p.id.clone();
+    save_config(&cfg)?;
+    let msg = format!("[{id}] 改成跟 {branch} 分支（原来是 {old}）");
+    log(&msg);
+    let mut notes = vec![msg];
+    notes.extend(op_update(Some(&id), false)?);
+    Ok(notes)
+}
+
 /// 另存并还原：把插件文件夹整份复制出去（带 .git，本地提交也在），再还原成跟踪分支的版本，继续同步
 pub fn act_save(body: &Value) -> R<Vec<String>> {
     let mut cfg = load_config();
@@ -1122,6 +1158,7 @@ fn action(name: &str, body: &Value) -> Option<R<Vec<String>>> {
         "auto" => set_auto_update(gb(body, "enabled"), body.get("interval_minutes").and_then(Value::as_i64).unwrap_or(60)),
         "guard" => set_guard(gb(body, "enabled")),
         "lock" => act_lock(body),
+        "branch" => act_branch(body),
         "save" => act_save(body),
         "budget" => act_budget(),
         _ => return None,
