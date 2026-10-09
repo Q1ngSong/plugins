@@ -7,6 +7,7 @@
 //! - `HOME_VAR`：用户主目录的环境变量名
 //! - `EXE_NAME`、`CLAUDE_EXE`、`CODEX_EXE`：程序和两边命令行的文件名，提示信息里用
 //! - `GIT_HINT`：找不到 git 时提示怎么装
+//! - `TRAY`：要不要托盘图标，点窗口的关闭按钮时缩进去（tray.rs）
 //!
 //! 路径
 //! - `plain(PathBuf) -> PathBuf`：去掉系统特有的前缀（Windows 的 `\\?\`）

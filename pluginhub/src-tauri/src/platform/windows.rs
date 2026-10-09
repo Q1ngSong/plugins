@@ -20,6 +20,8 @@ pub const EXE_NAME: &str = "pluginhub.exe";
 pub const CLAUDE_EXE: &str = "claude.exe";
 pub const CODEX_EXE: &str = "codex.exe";
 pub const GIT_HINT: &str = "请先安装 Git for Windows。";
+/// 有托盘图标：点窗口的关闭按钮不退出，缩到托盘
+pub const TRAY: bool = true;
 
 const NO_WINDOW: u32 = 0x0800_0000; // CREATE_NO_WINDOW：不弹黑框
 const DETACHED: u32 = 0x0000_0008 | 0x0000_0200; // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP

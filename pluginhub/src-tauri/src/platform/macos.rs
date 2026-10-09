@@ -19,6 +19,8 @@ pub const EXE_NAME: &str = "pluginhub";
 pub const CLAUDE_EXE: &str = "claude";
 pub const CODEX_EXE: &str = "codex";
 pub const GIT_HINT: &str = "请先装 Xcode 命令行工具（终端里运行 xcode-select --install），或者用 Homebrew 装 git。";
+/// 不放托盘图标：点关闭照系统的习惯来
+pub const TRAY: bool = false;
 
 /// launchd 任务的标签，plist 放在 ~/Library/LaunchAgents/<标签>.plist
 const LAUNCHD_LABEL: &str = "com.yuwan.pluginhub";

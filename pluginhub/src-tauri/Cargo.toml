@@ -9,7 +9,7 @@ rust-version = "1.90.0"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] } # 托盘图标（tray.rs）
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] } # 改 settings.json 时保持原来的键顺序
 chrono = "0.4"
@@ -20,6 +20,8 @@ walkdir = "2"
 # 自我更新：从 GitHub Release 下载新版本装上，装完重启
 tauri-plugin-updater = "2.12.0"
 tauri-plugin-process = "2.3.1"
+# 窗口缩在托盘里时再打开程序，把原来的窗口叫出来，不另开一个
+tauri-plugin-single-instance = "2"
 # 搜 skills.sh 上的技能（registry.rs）
 # 搜 skills.sh 上的技能（registry.rs）
 ureq = "3"

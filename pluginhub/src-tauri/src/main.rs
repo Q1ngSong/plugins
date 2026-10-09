@@ -23,6 +23,7 @@ mod server;
 mod skills;
 mod source;
 mod store;
+mod tray;
 mod usage;
 mod util;
 mod view;
@@ -69,18 +70,29 @@ fn main() {
         let files = embedded_files(&context);
         std::process::exit(cli::run_cli(&args[2..], files));
     }
-    schedule::ensure_background();
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    if platform::TRAY {
+        // 窗口可能缩在托盘里看不见：再打开程序时不另开一个，把原来的窗口叫出来。这个插件要排在最前面
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show(app)));
+    }
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![api])
         .setup(|app| {
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            // 到这里才看后台任务：已经有一个窗口开着的话，上面那个插件早就让这个进程退出了，轮不到它去动后台任务
+            schedule::ensure_background();
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("插件中心")
                 .inner_size(1000.0, 760.0)
                 .min_inner_size(640.0, 520.0)
                 .center()
                 .build()?;
+            if platform::TRAY {
+                if let Err(e) = tray::install(app, &window) {
+                    util::log(&format!("托盘图标建不出来（{e}），点关闭照旧退出"));
+                }
+            }
             Ok(())
         })
         .run(context)
