@@ -23,7 +23,6 @@ tauri-plugin-process = "2.3.1"
 # 窗口缩在托盘里时再打开程序，把原来的窗口叫出来，不另开一个
 tauri-plugin-single-instance = "2"
 # 搜 skills.sh 上的技能（registry.rs）
-# 搜 skills.sh 上的技能（registry.rs）
 ureq = "3"
 
 # 只在对应的系统上编译的依赖；用到它们的代码都在 src/platform/ 里
