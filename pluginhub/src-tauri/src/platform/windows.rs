@@ -309,7 +309,8 @@ fn real_exe(p: &Path) -> Option<PathBuf> {
     }
 }
 
-/// 先看桌面 App 自带的（AppData 里按版本号分文件夹），取最新；再看官方安装脚本装的 ~/.local/bin，最后找 PATH
+/// 先看桌面 App 自带的（AppData 里按版本号分文件夹，新版本在 <版本> 下面多一层哈希文件夹），取最新；
+/// 再看官方安装脚本装的 ~/.local/bin，最后找 PATH
 pub fn find_claude() -> Option<PathBuf> {
     let mut roots = Vec::new();
     if let Some(appdata) = env_path("APPDATA") {
@@ -329,7 +330,13 @@ pub fn find_claude() -> Option<PathBuf> {
     for root in roots {
         if let Ok(rd) = fs::read_dir(&root) {
             for d in rd.flatten() {
-                if let Some(exe) = real_exe(&d.path().join(CLAUDE_EXE)) {
+                let v = d.path();
+                // 直接在版本文件夹里，或者再往下一层
+                let mut dirs = vec![v.clone()];
+                if let Ok(sub) = fs::read_dir(&v) {
+                    dirs.extend(sub.flatten().map(|e| e.path()).filter(|p| p.is_dir()));
+                }
+                if let Some(exe) = dirs.iter().find_map(|p| real_exe(&p.join(CLAUDE_EXE))) {
                     found.push((version_key(&d.file_name().to_string_lossy()), exe));
                 }
             }
