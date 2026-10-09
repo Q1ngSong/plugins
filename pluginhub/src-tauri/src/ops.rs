@@ -1058,7 +1058,7 @@ pub fn act_branch(body: &Value) -> R<Vec<String>> {
     if crate::gitx::resolve_commit(&d, &format!("origin/{branch}")).is_none() {
         bail!("[{}] 远端没有 {branch} 分支。", p.id);
     }
-    let synced = load_state().get(&p.id).and_then(|m| m.get("commit")).and_then(Value::as_str).map(str::to_string);
+    let synced = memo(&mut load_state(), &p.id).get("commit").and_then(Value::as_str).map(str::to_string);
     let changes = crate::gitx::local_changes(&d, &p.branch, synced.as_deref());
     if !changes.is_empty() {
         bail!("[{}] {}", p.id, crate::gitx::modified_hint(&d, &changes));
