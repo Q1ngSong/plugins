@@ -192,7 +192,9 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
           )}
         </div>
       ) : (
-        // 瀑布流：卡片窄一些、一行放几张，高度跟着介绍长短走
+        // 瀑布流：卡片窄一些、一行放几张，高度跟着介绍长短走。
+        // 分栏布局会把超出栏框的部分裁掉，每张卡片外面套一层、顶上留 2 像素内边距，悬停上浮 2 像素时还在栏框里
+        // （外边距不行：栏首的外边距会被分栏截掉）
         <div className="columns-[200px] gap-3">
           {list.map((p) => {
             const version = p.version || p.apps[0]?.version || "";
@@ -200,9 +202,10 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
             const locked = !!p.managed?.locked, modified = !!p.managed?.modified.length;
             const troubled = troubledApps(p).length > 0;
             return (
-              <div key={p.key} role="link" tabIndex={0} onClick={() => onOpen(p.key)}
+              <div key={p.key} className="mb-3 break-inside-avoid pt-0.5">
+              <div role="link" tabIndex={0} onClick={() => onOpen(p.key)}
                 onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(p.key); } }}
-                className={cn("group relative mb-3 flex cursor-pointer break-inside-avoid flex-col gap-2.5 overflow-hidden rounded-2xl border bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-blue-500/50 hover:shadow-md focus-visible:border-blue-500",
+                className={cn("group relative flex cursor-pointer flex-col gap-2.5 overflow-hidden rounded-2xl border bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-blue-500/50 hover:shadow-md focus-visible:border-blue-500",
                   isOurs(p) && "before:pointer-events-none before:absolute before:inset-0 before:bg-gradient-to-b before:from-blue-500/[.07] before:to-transparent before:to-50%")}>
                 <div className="relative flex items-start justify-between gap-2">
                   <div className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-xl border transition-transform group-hover:scale-105", iconTone(p))}
@@ -226,11 +229,12 @@ export function HomeView({ state, filter, kind, query, busy, run, confirm, onOpe
                     </div>
                   )}
                 </div>
-                <p className="relative line-clamp-[8] text-xs leading-relaxed text-muted-foreground" title={p.description}>{p.description || (isSkill(p) ? "SKILL.md 里没有写介绍" : "插件里没有写介绍")}</p>
+                <p className="relative line-clamp-[8] text-xs leading-relaxed text-muted-foreground">{p.description || (isSkill(p) ? "SKILL.md 里没有写介绍" : "插件里没有写介绍")}</p>
                 <div className="relative flex flex-wrap gap-1.5">
                   {installedApps(p).map((a) => <AppChip key={a.app + a.id} app={a.app} />)}
                   {!installedApps(p).length && <span className="text-xs text-muted-foreground">哪边都没装</span>}
                 </div>
+              </div>
               </div>
             );
           })}
