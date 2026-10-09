@@ -144,10 +144,11 @@ fn cmd_auto(delay_secs: u64) {
     }
 }
 
-/// 开机自启的后台进程：按设置的间隔跑后台任务；后台检查和自动更新都关掉了就退出
+/// 开机自启的后台进程：按设置的间隔跑后台任务；后台检查和自动更新都关掉了，或者后台任务登记给了别的程序，就退出
 fn cmd_daemon() -> R<()> {
-    let Some(_lock) = try_daemon_lock() else { return Ok(()) }; // 拿不到锁：已经有一个在跑
-    log("后台进程已启动");
+    let Some(_lock) = daemon_lock() else { return Ok(()) }; // 拿不到锁：已经有一个在跑，也轮不到这个程序接手
+    let me = this_program();
+    log(&format!("后台进程已启动：{me}"));
     let mut next_run = Instant::now() + Duration::from_secs(60); // 登录后等一分钟再查，不和开机抢资源
     let mut next_at = chrono::Local::now() + chrono::Duration::seconds(60);
     let mut shown = String::new();
@@ -159,6 +160,12 @@ fn cmd_daemon() -> R<()> {
             let _ = std::fs::remove_file(&*DAEMON_INFO);
             return Ok(());
         }
+        if let Some(other) = handed_over(&cfg) {
+            // 从别的位置打开了程序，或者程序更新了：快捷方式已经指向那一个，它的后台进程在等这个让位
+            log(&format!("后台任务登记给了 {other}，{me}的后台进程退出"));
+            let _ = std::fs::remove_file(&*DAEMON_INFO);
+            return Ok(());
+        }
         if Instant::now() >= next_run {
             cmd_auto(0);
             let secs = minutes.unwrap_or(GUARD_MINUTES) * 60;
@@ -167,7 +174,7 @@ fn cmd_daemon() -> R<()> {
         }
         let label = next_at.format("%m-%d %H:%M").to_string();
         if label != shown {
-            let _ = write_json(&DAEMON_INFO, &json!({"pid": std::process::id(), "next_run": label}));
+            write_daemon_info(&label);
             shown = label;
         }
         std::thread::sleep(Duration::from_secs(30));

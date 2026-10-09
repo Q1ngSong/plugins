@@ -79,6 +79,12 @@ pub struct GuardCfg {
 pub struct ScheduleCfg {
     #[serde(default)]
     pub mode: Option<String>,
+    /// 开机自启（startup）这种方式下，后台任务登记给了哪个程序、哪个版本：就是「启动」文件夹里的快捷方式指向的那个。
+    /// 在跑的后台进程发现登记的不是自己就退出（见 schedule.rs）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exe: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// 插件中心管理的独立 skill：在 ~/.yuwanplugins/skills/<dir> 存一份，targets 里为真的 app 链接到它
@@ -136,7 +142,15 @@ pub fn load_config() -> Config {
     }
 }
 
+/// 存配置。后台任务那一段（schedule：用哪种方式、登记给哪个程序）不用手里这份，照文件里现有的留着：
+/// 它和「启动」文件夹里的快捷方式是一对，只由 schedule.rs 通过 save_config_with_schedule 改。
+/// 别的操作手里的配置可能是好一会儿之前读的（添加插件要先联网克隆），整份存回去会把这期间换过的登记冲掉
 pub fn save_config(cfg: &Config) -> R<()> {
+    save_config_with_schedule(&Config { schedule: load_config().schedule, ..cfg.clone() })
+}
+
+/// 连后台任务那一段一起存，只给 schedule.rs 用
+pub fn save_config_with_schedule(cfg: &Config) -> R<()> {
     write_json(&CONFIG_PATH, &serde_json::to_value(cfg)?)
 }
 

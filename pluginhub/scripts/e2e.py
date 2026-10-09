@@ -1,4 +1,5 @@
 """端到端测试：通过 pluginhub --run api（Windows 上是 pluginhub.exe）调用接口，覆盖添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载，
+开机自启的后台进程跟着程序换位置，
 独立 skill 的收编、两边链接、修复和删除，真实检查顺带看的 Codex 技能清单，以及用 npx skills add 命令从 git 仓库装技能。
 用本地 git 仓库当远端，不碰 dclh。会真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件和一个测试 skill，
 测完会卸掉并清理干净，关掉测试里开的后台检查，最后核对两边的配置和测试前一样。
@@ -13,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 EXE = Path(os.environ.get("PLUGINHUB_EXE") or Path(__file__).resolve().parents[1] / "src-tauri" / "target" / "release" / ("pluginhub.exe" if os.name == "nt" else "pluginhub"))
@@ -158,7 +160,106 @@ def remove_link(p):
         os.unlink(p)
 
 
+def wait_for(cond, secs):
+    """每秒看一次 cond，等它变成真。[基础设施]
+
+    Args:
+        cond: 不带参数的函数，返回值当布尔用
+        secs: 最多等多少秒
+    Returns:
+        bool — 等到了是 True，到时间还没等到是 False
+    """
+    end = time.time() + secs
+    while time.time() < end:
+        if cond():
+            return True
+        time.sleep(1)
+    return bool(cond())
+
+
+def same_file(a, b):
+    """两个路径是不是同一个文件；短文件名、大小写这些写法不同不算不同。[基础设施]
+
+    Args:
+        a: 路径；None、空字符串、文件不存在都算不是
+        b: 路径，同上
+    Returns:
+        bool
+    """
+    try:
+        return bool(a) and bool(b) and os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def registered_exe():
+    """开机自启这种方式下，后台任务登记给了哪个程序：config.json 里 schedule.exe。[基础设施]
+
+    Returns:
+        str | None — 程序路径；没登记是 None
+    """
+    return (json.loads((HUB_DIR / "config.json").read_text(encoding="utf-8")).get("schedule") or {}).get("exe")
+
+
+def daemon_exe():
+    """在跑的后台进程是哪个程序：它自己写在 daemon.json 里的路径。[基础设施]
+
+    Returns:
+        str | None — 程序路径；后台进程没在跑（文件不在）或者是不写路径的旧版本，是 None
+    """
+    try:
+        return json.loads((HUB_DIR / "daemon.json").read_text(encoding="utf-8")).get("exe")
+    except (OSError, ValueError):
+        return None
+
+
+def startup_target():
+    """Windows「启动」文件夹里那个快捷方式指向的程序。[基础设施]
+
+    Returns:
+        str — 程序路径；快捷方式不在或者读不出来是空字符串
+    """
+    script = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              "$l = Join-Path ([Environment]::GetFolderPath('Startup')) '插件中心自动更新.lnk'; "
+              "if (Test-Path -LiteralPath $l) { (New-Object -ComObject WScript.Shell).CreateShortcut($l).TargetPath }")
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True, encoding="utf-8")
+    return r.stdout.strip()
+
+
+def open_program(exe):
+    """像用户打开程序那样把 exe 开起来：浏览器版的页面服务，不弹浏览器。程序打开时会看一眼后台任务归不归自己。[基础设施]
+
+    Args:
+        exe: 程序路径
+    Returns:
+        subprocess.Popen — 页面服务的进程，用完交给 close_program；这个脚本中途没了它也会自己退出
+    """
+    return subprocess.Popen([str(exe), "--run", "serve", "--no-browser", "--port", "8790", "--owner", str(os.getpid())],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=ENV)
+
+
+def close_program(proc):
+    """关掉 open_program 开的页面服务，连它留下的 server.json 一起清掉。[基础设施]
+
+    Args:
+        proc: open_program 返回的进程
+    """
+    proc.terminate()
+    proc.wait()
+    info = HUB_DIR / "server.json"
+    try:
+        if json.loads(info.read_text(encoding="utf-8")).get("pid") == proc.pid:
+            info.unlink()
+    except (OSError, ValueError):
+        pass
+
+
 GUARD_BEFORE = bool(((api("state").get("hub") or {}).get("guard") or {}).get("enabled"))
+# 在跑的后台进程要是 1.4.3 及以前的版本（daemon.json 里没写程序路径），它不认登记、不会让位，第 8b 步测试里开的后台进程接不上：
+# 先把后台检查关掉，等它自己退出（收尾时本来也要关）
+if GUARD_BEFORE and (HUB_DIR / "daemon.json").exists() and daemon_exe() is None:
+    api("guard", {"enabled": False})
+    wait_for(lambda: not (HUB_DIR / "daemon.json").exists(), 40)
 
 rmtree(work)
 (src / ".claude-plugin").mkdir(parents=True)
@@ -259,6 +360,24 @@ check("后台任务交给程序自己", any(st["hub"]["launcher"].lower().starts
 print("   launcher:", st["hub"]["launcher"])
 notes = notes_of("budget")
 check(f"单独看 Codex 的技能清单：{notes}", len(notes) == 1 and "[技能清单] Codex" in notes[0])
+
+# 8b. 开机自启的后台进程（Windows 上建不了系统任务的机器）跟着程序走：登记的是哪个程序，快捷方式就指向它、在跑的就是它；
+#     从别的位置打开程序，这三样都换过去。系统任务和 launchd 没有常驻的进程，不测这一段
+if st["hub"]["auto"].get("mode") == "startup":
+    check("登记的后台程序是它自己，快捷方式也指向它", same_file(registered_exe(), EXE) and same_file(startup_target(), EXE))
+    # daemon.json 可能是上一次被强行结束的后台进程留下的，所以还要看后台进程是不是真的在
+    ok = wait_for(lambda: same_file(daemon_exe(), EXE), 90) and api("state")["hub"]["auto"]["installed"]
+    check("在跑的后台进程是它自己", ok)
+    if not ok:
+        print("   在跑的要是 1.4.3 及以前的后台进程，它不认登记、不会让位：先把后台检查关掉等半分钟，或者停掉那个进程，再测")
+    other = work / "elsewhere" / EXE.name  # 同一个程序放到另一个位置，当成重装到了别处
+    other.parent.mkdir()
+    shutil.copy2(EXE, other)
+    for exe, label in ((other, "从另一个位置打开程序"), (EXE, "再从原来的位置打开")):
+        opened = open_program(exe)
+        check(f"{label}：登记和快捷方式都改成指向它", wait_for(lambda: same_file(registered_exe(), exe), 30) and same_file(startup_target(), exe))
+        check(f"{label}：原来的后台进程让位，它的接上", wait_for(lambda: same_file(daemon_exe(), exe), 90) and api("state")["hub"]["auto"]["installed"])
+        close_program(opened)
 
 # 9. 只从 Codex 卸载，再从 Claude 卸载 → 不再管理，文件夹挪进备份
 notes = notes_of("uninstall", {"key": ID, "id": f"{ID}@personal", "app": "codex"})
@@ -422,6 +541,10 @@ for d in (PLUGINS_DIR / "skills",):
         d.rmdir()
 if SAVED_DIR.exists() and not any(SAVED_DIR.iterdir()):
     SAVED_DIR.rmdir()
+# 第 8b 步拷到别处的那份程序要是还当着后台进程（换回来那一步没成），它占着自己的 exe，下面删不掉：
+# 后台检查已经关了，等它看到以后自己退出
+if same_file(daemon_exe(), work / "elsewhere" / EXE.name):
+    wait_for(lambda: daemon_exe() is None, 40)
 rmtree(work)
 rmtree(dup)
 

@@ -18,7 +18,7 @@ src-tauri/src/          程序（Rust，Tauri 2）
   gitx.rs               git：克隆、拉取、本地修改检测、读清单、备份
   source.rs             添加框里粘进来的东西怎么认：GitHub 的各种写法、子目录和技能的链接、npx skills add 命令（只认格式，不联网）
   usage.rs              扫描两边的会话记录，统计哪些项目用过插件
-  schedule.rs           后台任务：设置、状态、常驻后台进程的锁；系统任务怎么建交给 platform/
+  schedule.rs           后台任务：设置、状态、常驻后台进程的锁，以及它登记给哪个程序；系统任务怎么建交给 platform/
   server.rs             浏览器版的页面服务：只听 127.0.0.1，校验 Host 和令牌
   util.rs               路径、日志、JSON、目录链接、子进程、锁（平台无关）
   platform/             平台层：和系统打交道的都在这里，别的模块不写 #[cfg]
@@ -59,6 +59,8 @@ bash scripts/build-app.sh
 
 改了后端要重新构建程序。构建前先停掉在跑的 `pluginhub --run daemon`（Windows 上它占着 exe 文件）。
 
+Windows 上建不了计划任务的机器，后台任务是「启动」文件夹里的快捷方式拉起的常驻进程。它跟着程序走：建快捷方式时把程序的路径和版本登记在 `config.json` 的 `schedule` 里（`exe`、`version`），后台进程把自己的路径和版本写在 `daemon.json` 里。打开程序（窗口或 `--run serve`）时登记的不是它，就重新登记、把快捷方式改成指向它；在跑的后台进程每 30 秒读一次配置，看到登记的是别的位置的程序、或者同一位置更新的版本，就退出，新的后台进程等它让位再接手（最多等一小时，因为在跑的那个要先把手上这一轮跑完）。别的操作存配置时不动 `schedule` 这一段（`save_config` 照文件里现有的留着），免得手里的旧配置把刚换过的登记冲掉。所以用开发构建开过后台检查之后，再打开装好的程序，后台任务会自己换回去。1.4.3 及以前的后台进程不认登记，不会让位（新的等一分钟就不等了）：快捷方式已经改对，重新登录后跑的就是新的；想马上换，把后台检查关掉等半分钟再打开。
+
 macOS 的 .app 只做了临时签名（ad-hoc），本机构建的能直接打开；发给别人要过 Gatekeeper，见仓库首页 README 的安装一节。
 
 ## 平台相关的代码
@@ -67,13 +69,13 @@ macOS 的 .app 只做了临时签名（ad-hoc），本机构建的能直接打�
 
 ## 测试
 
-单元测试覆盖读 SKILL.md 开头的解析、技能开销的估算、读 Codex 模型提示里的技能清单（缩写的路径、被截短和只剩名字的说明）、添加框输入的识别（GitHub 的各种写法、`npx skills add` 命令）、插件清单的判断，以及会话记录里从仓库装的技能怎么计数：
+单元测试覆盖读 SKILL.md 开头的解析、技能开销的估算、读 Codex 模型提示里的技能清单（缩写的路径、被截短和只剩名字的说明）、添加框输入的识别（GitHub 的各种写法、`npx skills add` 命令）、插件清单的判断、会话记录里从仓库装的技能怎么计数，以及常驻的后台进程什么时候该让位：
 
 ```powershell
 cd src-tauri; cargo test
 ```
 
-`scripts/e2e.py` 是端到端测试，要本机有 Python，Windows 和 macOS 都能跑。它用一个本地 git 仓库当远端，通过 `pluginhub --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。真实检查有没有顺带记下 Codex 的技能清单，单独重新检查能不能用，也一并看。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。然后用一个只有技能的本地仓库，走一遍 `npx skills add` 命令识别、整条命令直接交给 add 装技能、远端更新后同步、`~/.agents/skills` 里有同名技能时不往 Codex 重复装、同一仓库再装一个、仓库后来有了插件清单时同一份克隆再装成插件、卸掉插件时技能还在用就留着克隆、技能删光后仓库一起不再管理。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
+`scripts/e2e.py` 是端到端测试，要本机有 Python，Windows 和 macOS 都能跑。它用一个本地 git 仓库当远端，通过 `pluginhub --run api` 调接口，真的往 Claude Code 和 Codex 里装一个叫 yp-e2e 的测试插件，走一遍添加、锁定、本地修改、另存并还原、后台检查修复配置、真实检查、卸载。真实检查有没有顺带记下 Codex 的技能清单，单独重新检查能不能用，也一并看。后台任务是开机自启的常驻进程时（Windows 上建不了计划任务的机器），把程序拷到另一个位置打开，看登记、快捷方式和在跑的后台进程是不是都跟过去，再从原来的位置打开换回来。再在 Codex 里放一个叫 yp-e2e-skill 的测试技能，走一遍装到 Claude Code、链接被删后修复、从一边删、从所有 app 删。然后用一个只有技能的本地仓库，走一遍 `npx skills add` 命令识别、整条命令直接交给 add 装技能、远端更新后同步、`~/.agents/skills` 里有同名技能时不往 Codex 重复装、同一仓库再装一个、仓库后来有了插件清单时同一份克隆再装成插件、卸掉插件时技能还在用就留着克隆、技能删光后仓库一起不再管理。最后清理干净，并核对 Codex 的 config.toml 和 Claude Code 的 settings.json 都和测试前一样。
 
 ```powershell
 python scripts\e2e.py
