@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::platform;
 
-pub const HUB_VERSION: &str = "1.4.2";
+pub const HUB_VERSION: &str = "1.4.3";
 /// 路径分隔符：规范化后的路径都用它
 pub const SEP: char = std::path::MAIN_SEPARATOR;
 
